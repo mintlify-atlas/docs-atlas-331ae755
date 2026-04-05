@@ -1,0 +1,238 @@
+---
+title: "Packet checks"
+description: "BadPackets, PacketOrder, and Crash checks that detect malformed, illegal, or incorrectly sequenced network packets."
+---
+
+Packet checks validate the structure and ordering of packets sent by the client. Unlike prediction-based checks, these fire synchronously as each packet arrives. Most of them cancel or modify the offending packet directly, preventing it from reaching the server's game logic.
+
+When Grim cancels enough packets in a short window, the player is kicked based on `packet-spam-threshold` (default `100` cancelled packets per second). This prevents packet limiters from missing Grim-cancelled packets.
+
+```yaml
+# en.yml
+packet-spam-threshold: 100
+```
+
+**Punishment group for all checks below:** `BadPackets` (covers BadPackets, PacketOrder, and Crash checks)
+
+## BadPackets checks
+
+These checks detect individual malformed or contextually illegal packets.
+
+<AccordionGroup>
+  <Accordion title="BadPacketsA — Duplicate slot id">
+    **Description:** Sent duplicate slot id
+
+    Detects a `HELD_ITEM_CHANGE` packet with the same hotbar slot as the previous one. Vanilla clients only send this packet when the slot actually changes. Repeated identical slot change packets are used by some clients to desync the server's hotbar tracking.
+  </Accordion>
+
+  <Accordion title="BadPacketsB — Ignored set rotation">
+    **Description:** Ignored set rotation packet
+
+    The server sends rotation-correction packets to the client via transactions. If the client acknowledges the transaction but never updates its rotation to match the expected value, this check flags. This catches clients that ignore server-forced look directions.
+  </Accordion>
+
+  <Accordion title="BadPacketsC — Wake while not sleeping (experimental)">
+    **Description:** Tried to wake up while not sleeping
+
+    Detects a `LEAVE_BED` entity action sent by a player who is not actually in bed. This is physically impossible with a vanilla client.
+  </Accordion>
+
+  <Accordion title="BadPacketsD — Impossible pitch">
+    **Description:** Impossible pitch
+
+    Detects rotation packets where the pitch value is outside the valid range (`-90` to `+90` degrees). Sending an out-of-range pitch causes NaN propagation in the server's trigonometry and can crash or corrupt game logic.
+  </Accordion>
+
+  <Accordion title="BadPacketsE — Missing movement packets">
+    Detects a player who sends fewer movement packets than expected within a tick window. Vanilla clients always send at least one flying packet per game tick (or, on 1.21.2+, a `CLIENT_TICK_END`). Skipping packets entirely indicates a modified tick loop.
+  </Accordion>
+
+  <Accordion title="BadPacketsF — Duplicate sprinting status">
+    **Description:** Sent duplicate sprinting status
+
+    Detects `ENTITY_ACTION` packets that toggle sprint to the same state it is already in. Vanilla clients never send `START_SPRINTING` when already sprinting or `STOP_SPRINTING` when not sprinting.
+  </Accordion>
+
+  <Accordion title="BadPacketsG — Duplicate sneaking status">
+    **Description:** Sent duplicate sneaking status
+
+    Same as BadPacketsF but for sneak state. The check resets its exemption on respawn because the client may legitimately resend its current sneak state after returning from a different gamemode.
+  </Accordion>
+
+  <Accordion title="BadPacketsH — Unexpected sequence id (experimental)">
+    **Description:** Sent unexpected sequence id
+
+    On 1.19+ servers, block placement and dig packets carry a sequence number for ack purposes. This check detects clients that send an unexpected or out-of-order sequence ID, which indicates packet manipulation.
+  </Accordion>
+
+  <Accordion title="BadPacketsI — Claimed to be flying while unable to fly">
+    **Description:** Claimed to be flying while unable to fly
+
+    Detects `PLAYER_ABILITIES` packets where the `isFlying` flag is set but the player does not have flight enabled server-side (`canFly = false`). The incorrect packet is cancelled.
+  </Accordion>
+
+  <Accordion title="BadPacketsJ — Mismatched use-item rotation">
+    **Description:** Rotation in use item packet did not match tick rotation
+
+    On versions where the `USE_ITEM` packet carries a rotation (1.21.2+), this check verifies that the rotation in the use-item packet matches the rotation the player sent in their movement packet for the same tick.
+  </Accordion>
+
+  <Accordion title="BadPacketsK — Spectate outside spectator mode">
+    **Description:** Sent spectate packets while not in spectator mode
+
+    Detects `SPECTATE` packets from players who are not in spectator mode. This packet should never be sent outside spectator.
+  </Accordion>
+
+  <Accordion title="BadPacketsL — Impossible dig packet">
+    **Description:** Sent impossible dig packet
+
+    Validates the action field in `PLAYER_DIGGING` packets. Certain digging actions are only valid in specific states (e.g., `FINISH_DIGGING` requires a prior `START_DIGGING`). Sending logically impossible dig actions is flagged and cancelled.
+  </Accordion>
+
+  <Accordion title="BadPacketsM — Respawn while alive (experimental)">
+    **Description:** Tried to respawn while alive
+
+    Detects `CLIENT_COMMAND` respawn requests sent by a player who is not dead. Vanilla clients only send this after the death screen appears. A small exemption window is kept to handle race conditions where the server kills the player but the client hasn't received the death packet yet.
+  </Accordion>
+
+  <Accordion title="BadPacketsN — Transaction order sentinel">
+    **Config:** `setbackvl: 0`
+
+    An internal sentinel check that records transaction timing data. It does not flag players directly but provides data to other checks. `setbackvl: 0` means it never triggers a setback.
+  </Accordion>
+
+  <Accordion title="BadPacketsO — Invalid keep-alive response">
+    Detects players who respond to keep-alive packets with an ID that was never sent by the server, or respond to the same keep-alive multiple times. Vanilla clients respond to each keep-alive exactly once with the ID the server sent.
+  </Accordion>
+
+  <Accordion title="BadPacketsP — Invalid window click (experimental)">
+    **Description:** Invalid window click packet
+
+    Validates `CLICK_WINDOW` (inventory click) packets against the container type currently open on the server. Click actions that are impossible for the open container type (e.g., crafting-only operations on a chest) are flagged.
+  </Accordion>
+
+  <Accordion title="BadPacketsQ — Negative horse jump boost">
+    Detects `ENTITY_ACTION` packets with a negative horse jump boost power value. The vanilla client never sends a negative value for this field; doing so exploits a lack of server-side bounds checking in some Minecraft versions.
+  </Accordion>
+
+  <Accordion title="BadPacketsR — Transaction timing abuse (experimental)">
+    **Config:** `decay: 0.25`
+
+    Detects players who send movement packets without waiting for the expected transaction timing, indicating they are manipulating packet order to avoid synchronisation checks.
+  </Accordion>
+
+  <Accordion title="BadPacketsS — Rejected window confirmation">
+    Detects `WINDOW_CONFIRMATION` packets where the `accepted` flag is `false`. These packets were used in older protocol versions to signal that the client rejected a transaction; vanilla clients on modern versions never send an unaccepted confirmation.
+  </Accordion>
+
+  <Accordion title="BadPacketsT — Impossible teleport acceptance">
+    Detects players whose position after accepting a teleport differs from the teleport destination by more than the allowed client-side displacement. The allowed displacement varies by client version: 1.7/1.8 clients have slightly different hitbox expansion values than 1.9+ clients.
+  </Accordion>
+
+  <Accordion title="BadPacketsU — Impossible use item packet">
+    **Description:** Sent impossible use item packet
+
+    Detects `PLAYER_BLOCK_PLACEMENT` packets sent with a block face that is not valid for a use-item action. On 1.8 and older, `BlockFace.OTHER` means use-item; on 1.9+ this is a separate packet type. Sending the wrong encoding is flagged and cancelled.
+  </Accordion>
+
+  <Accordion title="BadPacketsV — Did not move far enough (experimental)">
+    **Description:** Did not move far enough
+
+    Detects players who consistently send movement packets that report no positional change but should be moving. This catches freezing clients and some packet-rate manipulation techniques.
+  </Accordion>
+
+  <Accordion title="BadPacketsW — Interacted with non-existent entity (experimental)">
+    **Description:** Interacted with non-existent entity
+
+    Detects attack or interact packets targeting an entity ID that Grim is tracking on the server side but that does not currently exist in Grim's entity map (e.g., the entity has despawned). Cancels the packet.
+  </Accordion>
+
+  <Accordion title="BadPacketsX — Sprint/sneak state mismatch (experimental)">
+    After each prediction cycle, verifies that the player's sprint and sneak states reported in entity action packets are consistent with what the prediction engine observed. Inconsistencies indicate the client is lying about its movement state.
+  </Accordion>
+
+  <Accordion title="BadPacketsY — Out of bounds slot id">
+    **Description:** Sent out of bounds slot id
+
+    Detects `HELD_ITEM_CHANGE` packets with a slot value outside `[0, 8]`. The vanilla hotbar only has 9 slots (0–8); any other value is impossible and typically used to trigger server exceptions.
+  </Accordion>
+
+  <Accordion title="BadPacketsZ — Missing tick end packet (experimental)">
+    On 1.21.2+ servers, the client must send a `CLIENT_TICK_END` packet each game tick. This check detects movement packets sent without a preceding `CLIENT_TICK_END`, indicating the client is running an older or modified tick loop.
+  </Accordion>
+</AccordionGroup>
+
+## PacketOrder checks
+
+PacketOrder checks validate that packets arrive in the sequence the vanilla client would produce them. All PacketOrder checks are currently experimental.
+
+<AccordionGroup>
+  <Accordion title="PacketOrderB — No swing for attack">
+    **Description:** Did not swing for attack
+
+    On 1.9+ clients the packet order for an attack is `ANIMATION` (swing) → `INTERACT_ENTITY` (or `ATTACK`). On 1.8 it is reversed: `ANIMATION` then `INTERACT`. This check flags when an attack packet arrives without the corresponding swing animation in the correct order. Missing swings are commonly associated with kill-aura modules that optimize packet throughput.
+
+    <Note>
+    This check is exempt for 1.8 clients on 1.9+ servers because ViaRewind reorders animation packets in a way that breaks the expected sequence.
+    </Note>
+
+    **Config options (`en.yml` → `PacketOrderI`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `exempt-placing-while-digging` | `false` | Exempt players placing blocks while digging (for 1.7 animation mods) |
+  </Accordion>
+
+  <Accordion title="PacketOrderA, C–P">
+    These checks (all experimental) cover additional packet ordering invariants such as:
+
+    - Sending block interaction packets before the corresponding movement packet
+    - Sending inventory packets at illegal points in the tick cycle
+    - Using item packets that arrive in the wrong tick phase relative to movement
+    - Digging action sequences that are impossible with a vanilla client
+
+    Each check targets a specific packet pair or sequence that vanilla clients always produce in a fixed order.
+  </Accordion>
+</AccordionGroup>
+
+## Crash checks
+
+Crash checks detect packets that could crash the server, corrupt game state, or cause exceptions in vanilla Minecraft code.
+
+<AccordionGroup>
+  <Accordion title="CrashA — Out of world bounds">
+    Detects position packets where X or Z exceeds `±2.9999999E7` (the hard-coded Minecraft world border) or Y exceeds `Integer.MAX_VALUE`. These coordinates trigger overflow or exception handling in vanilla server code.
+  </Accordion>
+
+  <Accordion title="CrashB — Creative inventory outside creative">
+    **Description:** Sent creative mode inventory click packets while not in creative mode
+
+    Detects `CREATIVE_INVENTORY_ACTION` packets sent by players not in creative mode. Vanilla clients never send this packet outside creative. Processing it in survival mode causes inventory corruption or exceptions.
+  </Accordion>
+
+  <Accordion title="CrashC — Non-finite position or rotation">
+    **Description:** Sent non-finite position or rotation
+
+    Detects `NaN`, `Infinity`, or `-Infinity` values in any position or rotation field. These values propagate through the server's floating-point math and can cause cascading exceptions across nearby entities and chunks.
+  </Accordion>
+
+  <Accordion title="CrashD — Lectern slot interaction">
+    **Description:** Clicking slots in lectern window
+
+    Detects inventory click packets sent while a lectern window is open. Lecterns do not have clickable slots; sending slot-click packets against a lectern container ID causes an `IndexOutOfBoundsException` in vanilla.
+  </Accordion>
+
+  <Accordion title="CrashE, CrashF — Oversized payload checks">
+    Detect packets with oversized string or array fields that exceed vanilla bounds, which can cause memory exhaustion or packet parsing failures.
+  </Accordion>
+
+  <Accordion title="CrashG — Negative sequence id">
+    **Description:** Sent negative sequence id
+
+    On 1.19+ servers, sequence IDs in block-related packets must be non-negative. Negative values are not expected by the server and can cause undefined behaviour in the acknowledgement system.
+  </Accordion>
+
+  <Accordion title="CrashH, CrashI — Additional crash vectors">
+    Cover additional exploit patterns involving malformed compound NBT in item packets and invalid resource location strings that crash the server's resource lookup.
+  </Accordion>
+</AccordionGroup>

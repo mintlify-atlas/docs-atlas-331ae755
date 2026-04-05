@@ -1,0 +1,324 @@
+---
+title: "Punishment configuration"
+description: "Configure punishment groups, commands, thresholds, and violation decay in punishments/en.yml."
+---
+
+Grim's punishment system is defined entirely in `plugins/GrimAC/punishments/en.yml`. Rather than assigning punishments per-check, Grim uses **punishment groups** — named buckets that aggregate violations from multiple related checks and trigger commands when cumulative violations cross defined thresholds.
+
+## File structure
+
+```yaml punishments/en.yml
+Punishments:
+  GroupName:
+    remove-violations-after: 300   # seconds
+    checks:
+      - "CheckName"
+      - "!ExcludedCheck"
+    commands:
+      - "threshold:interval command"
+```
+
+Every key under `Punishments:` is a named group. You can add, remove, or rename groups freely.
+
+---
+
+## Checks list
+
+The `checks` list controls which Grim checks contribute violations to this group. Matching is case-insensitive and uses substring matching against both the check's primary name and any alternative names.
+
+```yaml
+checks:
+  - "Simulation"    # matches all checks whose name contains "Simulation"
+  - "GroundSpoof"
+  - "Timer"
+  - "!BadPacketsN"  # exclude BadPacketsN even if it would otherwise match
+```
+
+<Info>
+  Prefix a check name with `!` to **exclude** it from a group that would otherwise match it. This is useful when a broad term like `"BadPackets"` would pull in a specific check you want to handle differently.
+</Info>
+
+---
+
+## Commands format
+
+Each entry in the `commands` list uses the format:
+
+```
+threshold:interval command
+```
+
+| Part | Description |
+|------|-------------|
+| `threshold` | Minimum violation count before this command becomes eligible to run. |
+| `interval` | How often (in violations) the command repeats after the threshold. Use `0` to execute exactly once. |
+| `command` | The command or special keyword to run. |
+
+**Examples:**
+
+```yaml
+commands:
+  # Alert staff when violations reach 100, then again every 40 violations after that.
+  - "100:40 [alert]"
+
+  # Log to database at the same cadence.
+  - "100:40 [log]"
+
+  # Send a Discord webhook alert at 100 violations, then every 100 after.
+  - "100:100 [webhook]"
+
+  # Kick the player exactly once when violations hit 200.
+  - "200:0 kick %player% Movement violation limit reached."
+```
+
+---
+
+## Special commands
+
+Instead of a server command, you can use one of Grim's built-in action keywords:
+
+| Keyword | Action |
+|---------|--------|
+| `[alert]` | Broadcast an in-game alert to all players with the `grim.alerts` permission. |
+| `[log]` | Write the violation to the configured database (see `history` in `config/en.yml`). |
+| `[webhook]` | Send a Discord embed to the configured webhook URL. |
+| `[proxy]` | Forward the alert to all other servers on your BungeeCord/Velocity network. |
+
+<Note>
+  `[proxy]` requires `alerts.proxy.send: true` in `config/en.yml` and the BungeeCord plugin messaging channel enabled on your proxy.
+</Note>
+
+---
+
+## Alert format placeholders
+
+The `[alert]` message is controlled by `alerts-format` and `alerts-format-proxy` in `punishments/en.yml` (or you can set it globally). The following placeholders are supported:
+
+| Placeholder | Description |
+|-------------|-------------|
+| `%player%` | The flagged player's name. |
+| `%check_name%` | Display name of the check that flagged. |
+| `%vl%` | Current violation count for this check within the group. |
+| `%verbose%` | Extra debug information from the check (offsets, states, etc.). |
+| `%description%` | The check's description string. |
+| `%experimental%` | Replaced with the experimental symbol (default `*`) if the check is experimental, otherwise empty. |
+| `%prefix%` | Grim's configured message prefix. |
+
+Default alert format (from `PunishmentManager.java`):
+
+```
+%prefix% &f%player% &bfailed &f%check_name% &f(x&c%vl%&f) &7%verbose%
+```
+
+---
+
+## remove-violations-after
+
+```yaml
+remove-violations-after: 300
+```
+
+Violations older than this many **seconds** are automatically removed from the group's violation map. This prevents old flags from indefinitely inflating a player's violation count after they stop cheating.
+
+<Tip>
+  Set `remove-violations-after` lower (e.g. `60`) for checks that produce many short-burst violations to avoid legitimate players accumulating punishments from intermittent false positives.
+</Tip>
+
+---
+
+## test-mode
+
+```yaml
+test-mode: false
+```
+
+When `test-mode: true`, `[alert]` messages are sent **only to the flagged player** instead of broadcasting to all staff. This lets you test punishment thresholds in production without spamming your staff channel.
+
+---
+
+## Default punishment groups
+
+<AccordionGroup>
+  <Accordion title="Simulation">
+    Covers movement prediction checks — speed, fly, ground spoofing, timer, and no-fall.
+
+    ```yaml
+    Simulation:
+      remove-violations-after: 300
+      checks:
+        - "Simulation"
+        - "GroundSpoof"
+        - "Timer"
+        - "TimerLimit"
+        - "NoFall"
+      commands:
+        - "100:40 [alert]"
+        - "100:40 [log]"
+        - "100:100 [webhook]"
+        - "100:100 [proxy]"
+    ```
+
+    The high threshold (100) reflects the fact that legitimate physics deviations can accumulate during lag or unusual block interactions. Alerts fire every 40 violations after the initial threshold.
+  </Accordion>
+
+  <Accordion title="Knockback">
+    Covers knockback and explosion velocity manipulation.
+
+    ```yaml
+    Knockback:
+      remove-violations-after: 300
+      checks:
+        - "Knockback"
+        - "Explosion"
+      commands:
+        - "5:5 [alert]"
+        - "5:5 [log]"
+        - "20:20 [webhook]"
+        - "20:20 [proxy]"
+    ```
+
+    Lower thresholds are used here because legitimate players very rarely accumulate consistent knockback violations.
+  </Accordion>
+
+  <Accordion title="Post">
+    Covers the Post check, which detects illegal packet ordering around attack actions.
+
+    ```yaml
+    Post:
+      remove-violations-after: 300
+      checks:
+        - "Post"
+      commands:
+        - "20:20 [alert]"
+        - "20:20 [log]"
+        - "40:40 [webhook]"
+        - "40:40 [proxy]"
+    ```
+  </Accordion>
+
+  <Accordion title="BadPackets">
+    Covers malformed, illegal, or out-of-order packets — including crash attempts.
+
+    ```yaml
+    BadPackets:
+      remove-violations-after: 300
+      checks:
+        - "BadPackets"
+        - "PacketOrder"
+        - "Crash"
+      commands:
+        - "20:20 [alert]"
+        - "20:20 [log]"
+        - "40:40 [webhook]"
+        - "40:40 [proxy]"
+    ```
+  </Accordion>
+
+  <Accordion title="Reach">
+    Covers the reach/attack distance check. Alerts fire on every single violation because reach is a high-confidence detection.
+
+    ```yaml
+    Reach:
+      remove-violations-after: 300
+      checks:
+        - "Reach"
+      commands:
+        - "1:1 [alert]"
+        - "1:1 [log]"
+        - "1:1 [webhook]"
+        - "1:1 [proxy]"
+    ```
+  </Accordion>
+
+  <Accordion title="Hitboxes">
+    Covers hitbox expansion/manipulation checks.
+
+    ```yaml
+    Hitboxes:
+      remove-violations-after: 300
+      checks:
+        - "Hitboxes"
+      commands:
+        - "5:3 [alert]"
+        - "5:3 [log]"
+        - "5:3 [webhook]"
+        - "5:3 [proxy]"
+    ```
+  </Accordion>
+
+  <Accordion title="Misc">
+    Catch-all group for vehicle, sprint, multi-action, placement, elytra, chat, and exploit checks.
+
+    ```yaml
+    Misc:
+      remove-violations-after: 300
+      checks:
+        - "Vehicle"
+        - "NoSlow"
+        - "Sprint"
+        - "MultiActions"
+        - "Place"
+        - "Baritone"
+        - "Break"
+        - "TransactionOrder"
+        - "Elytra"
+        - "Chat"
+        - "Exploit"
+      commands:
+        - "10:5 [alert]"
+        - "10:5 [log]"
+        - "20:10 [webhook]"
+        - "20:10 [proxy]"
+    ```
+  </Accordion>
+
+  <Accordion title="Combat">
+    Covers aim and interaction checks.
+
+    ```yaml
+    Combat:
+      remove-violations-after: 300
+      checks:
+        - "Interact"
+        - "Aim"
+      commands:
+        - "20:40 [alert]"
+        - "20:40 [log]"
+    ```
+  </Accordion>
+
+  <Accordion title="Autoclicker">
+    Placeholder group for future autoclicker detection. As of Grim 2.2.10, no autoclicker checks are active.
+
+    ```yaml
+    # As of 2.2.10, there are no AutoClicker checks — this is a placeholder.
+    Autoclicker:
+      remove-violations-after: 300
+      checks:
+        - "Autoclicker"
+      commands:
+        - "20:40 [alert]"
+        - "20:40 [log]"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Adding a kick punishment
+
+To kick a player after a sustained period of violations, add a console command entry to any group:
+
+```yaml
+Simulation:
+  commands:
+    - "100:40 [alert]"
+    - "100:40 [log]"
+    - "200:0 kick %player% Kicked for illegal movement."
+```
+
+The `200:0` format means: execute **once** when the violation count reaches 200. Replace `kick` with any server command available on your platform.
+
+<Warning>
+  Avoid setting kick thresholds too low on checks with high natural variance (e.g. Simulation, BadPackets). Start with alerts, monitor verbose output, and raise or lower thresholds based on observed false-positive rates before enabling kicks.
+</Warning>

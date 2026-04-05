@@ -1,0 +1,119 @@
+---
+title: "Compatibility"
+description: "Compatibility guidance for ViaVersion, Geyser, other anticheats, and common plugin conflicts."
+---
+
+This page covers known compatibility requirements and common plugin conflicts. Read through the relevant sections for your setup before reporting issues.
+
+---
+
+## ViaVersion
+
+ViaVersion allows players on different Minecraft versions to connect to your server. Grim integrates with ViaVersion to handle per-version physics differences correctly, but the placement of ViaVersion matters.
+
+<Warning>
+  ViaVersion must be installed on the **backend server** (the server running Grim) **only**. Installing ViaVersion on a proxy (Velocity, BungeeCord) while it is also on the backend — or installing it on the proxy alone — is not supported and will cause false positives.
+</Warning>
+
+### ViaVersion configuration
+
+Grim checks for problematic ViaVersion options on startup and logs errors if it finds them:
+
+- **`fix-1_21-placement-rotation`** — This option must be **disabled** if your server is running a version older than 1.21. When enabled on older servers, it causes block placement rotation mismatches that result in false positives and bypasses. Grim will log an error to console if this is detected.
+
+- **ViaBackwards on 1.21.2+** — Running ViaBackwards on a server version of 1.21.2 or newer is currently unsupported. Older clients using vehicles will experience issues. Grim logs a warning on startup if it detects this combination.
+
+### Checking ViaVersion injection
+
+If you suspect a ViaVersion pipeline conflict, enable `debug-pipeline-on-join: true` in `en.yml`. On the next player join, Grim logs every plugin that has injected into the netty pipeline so you can identify ordering issues.
+
+```yaml
+# en.yml
+debug-pipeline-on-join: true
+```
+
+---
+
+## Geyser and Floodgate
+
+Geyser enables Bedrock Edition players to connect to Java Edition servers. Grim automatically exempts all Geyser (Bedrock) players from every check to prevent false positives from Bedrock–Java protocol differences.
+
+<Note>
+  When using a proxy (Velocity or BungeeCord), **Floodgate must be installed on the backend server** — the server where Grim is running — not only on the proxy. Grim uses the Floodgate API to identify Bedrock players; if Floodgate is absent from the backend, Grim cannot detect them and will not apply the exemption.
+</Note>
+
+No additional Grim configuration is needed for Geyser. As long as Floodgate is on the backend, Bedrock players will be detected and fully exempted automatically.
+
+---
+
+## Other anticheats
+
+Grim can run alongside other anticheats, but conflicts are possible depending on how they interact with the netty packet pipeline.
+
+**Common issues and mitigations:**
+
+- **Pong packet conflicts** — Some anticheats also consume or cancel pong packets (`PONG` / `WINDOW_CONFIRMATION`). If you see unexpected behavior when running a second anticheat, try enabling:
+
+  ```yaml
+  # en.yml
+  disable-pong-cancelling: true
+  ```
+
+  This stops Grim from cancelling pong packets, which may improve compatibility. Note that this can affect packet limiters, so only enable it if you are experiencing a confirmed conflict.
+
+- **Pipeline injection ordering** — Enable `debug-pipeline-on-join: true` to see the order in which plugins have injected into the netty pipeline. If another anticheat injects before Grim (or vice versa) and cancels packets Grim needs, false positives or missed detections can occur.
+
+- **Packet limiters** — If your server uses a packet limiter that does not count packets already cancelled by Grim, you may want to tune `packet-spam-threshold` in `en.yml`. This controls how many cancelled packets within a second causes Grim to kick the player.
+
+  ```yaml
+  # en.yml
+  packet-spam-threshold: 100
+  ```
+
+---
+
+## Fake packet blocks (packet-based fake block plugins)
+
+Plugins that create fake blocks by sending block change packets to clients — without actually placing those blocks in the server world — can conflict with Grim's default block resynchronization handler. By default, when Grim detects a client–server block state mismatch, it reads the real block from the server world and sends it to the client, which overwrites any fake blocks the plugin placed.
+
+To prevent this, disable the default resync handler:
+
+```yaml
+# en.yml
+# Prevents Grim from overwriting packet-based fake blocks with the real server block.
+disable-default-resync-handler: true
+```
+
+<Note>
+  When `disable-default-resync-handler: true` is set, Grim uses a no-operation handler unless you provide a custom one via the plugin API. You are responsible for ensuring block synchronization is handled correctly by your plugin.
+</Note>
+
+---
+
+## Forge clients
+
+Grim blocks specific Forge versions that ship with built-in reach hacks. This applies to **Forge 1.18.2 through 1.19.3**, which include a known reach exploit.
+
+```yaml
+# en.yml
+# Disconnects clients using Forge 1.18.2–1.19.3 (built-in reach hack).
+# Set to false only if you specifically need to allow these clients.
+disconnect-blacklisted-forge-versions: true
+```
+
+This is enabled by default. Setting it to `false` allows these Forge versions to connect, which is a security risk on PvP servers. Disable it only if you have a specific reason to allow those clients and understand the implications.
+
+---
+
+## TAB plugin
+
+The TAB plugin is incompatible with Grim in certain configurations. Specifically, when all of the following are true:
+
+- TAB is installed alongside ViaVersion.
+- The server is running a version **older than 1.13**.
+
+In this setup, TAB sends illegal team packets to clients running newer versions than the server, which can interfere with Grim's packet processing. Grim detects this combination on startup and logs a warning:
+
+> `GrimAC has detected that you have installed TAB with ViaVersion. Please note that currently, TAB is incompatible as it sends illegal packets to players using versions newer than your server version.`
+
+You may be able to resolve this by setting `compensate-for-packetevents-bug: true` in the TAB plugin's configuration. Check the TAB documentation for details. On servers running 1.13 or newer this issue does not apply.

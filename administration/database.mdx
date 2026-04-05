@@ -1,0 +1,177 @@
+---
+title: "Violation database"
+description: "Configure Grim's violation history database (SQLite, MySQL, or PostgreSQL) and use /grimac history to review stored flags."
+---
+
+Grim can persist violation records to a database so you can review a player's flag history after the fact — even across server restarts. Three database backends are supported: SQLite (local file, zero configuration), MySQL, and PostgreSQL.
+
+## What gets stored
+
+Each violation record contains:
+
+| Field | Description |
+|---|---|
+| Server name | The `history.server-name` value from config — useful when sharing one database across multiple servers |
+| Player UUID | The flagged player's UUID |
+| Check name | Which check triggered the flag (e.g. `Simulation`, `Reach`) |
+| Verbose data | The raw verbose string produced by the check (offset, tick data, etc.) |
+| Violation count | The player's VL at the time the record was written |
+| Timestamp | Unix millisecond timestamp of the violation |
+| Grim version | The Grim build that logged the record |
+| Client brand | The client's reported mod brand |
+| Client version | The Minecraft version the client reported |
+| Server version | The Minecraft version the server was running |
+
+## Configuration
+
+The full history block in `config/en.yml`:
+
+```yaml config/en.yml
+history:
+    enabled: true
+    # How many entries to show per page with /grimac history <player>
+    entries-per-page: 15
+    # Inserted as the server name on each violation record.
+    # Set a unique value per server when sharing one database across a network.
+    server-name: Prison
+    database:
+        # SQLITE for local storage, MYSQL or POSTGRESQL for external databases.
+        # Changes to this value require a full server restart to take effect.
+        type: SQLITE
+        # Connection details (used by MYSQL and POSTGRESQL only)
+        host: localhost
+        port: 3306
+        database: grim
+        username: root
+        password: ""
+```
+
+### Configuration reference
+
+| Key | Default | Description |
+|---|---|---|
+| `history.enabled` | `false` | Enable or disable the violation database entirely |
+| `history.entries-per-page` | `15` | Number of records shown per page by `/grimac history` |
+| `history.server-name` | `Prison` | Label embedded in every record — set a unique value per server on a shared database |
+| `history.database.type` | `SQLITE` | Database backend: `SQLITE`, `MYSQL`, or `POSTGRESQL` |
+| `history.database.host` | `localhost` | Hostname or IP of the database server (MySQL/PostgreSQL only) |
+| `history.database.port` | `3306` | Port of the database server (MySQL/PostgreSQL only) |
+| `history.database.database` | `grim` | Database (schema) name |
+| `history.database.username` | `root` | Database user |
+| `history.database.password` | `""` | Database password |
+
+<Warning>
+  Changing `history.database.type` requires a **full server restart**. A `/grimac reload` is not sufficient for this setting.
+</Warning>
+
+## Setting up MySQL
+
+<Steps>
+  <Step title="Create the database and user">
+    Log into your MySQL server and create a dedicated database and user for Grim:
+
+    ```sql
+    CREATE DATABASE grim CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER 'grimuser'@'%' IDENTIFIED BY 'yourpassword';
+    GRANT ALL PRIVILEGES ON grim.* TO 'grimuser'@'%';
+    FLUSH PRIVILEGES;
+    ```
+  </Step>
+  <Step title="Update config/en.yml">
+    Edit the `history` block in your `plugins/GrimAC/config/en.yml`:
+
+    ```yaml config/en.yml
+    history:
+        enabled: true
+        entries-per-page: 15
+        server-name: MyServer
+        database:
+            type: MYSQL
+            host: 127.0.0.1
+            port: 3306
+            database: grim
+            username: grimuser
+            password: yourpassword
+    ```
+  </Step>
+  <Step title="Restart the server">
+    A full server restart is required for the database type change to take effect. Grim will automatically create the required tables on first connection.
+  </Step>
+  <Step title="Verify connection">
+    Run `/grimac history <anyplayer>` in-game. If the database loaded successfully you will see a (possibly empty) history page. If the subsystem failed to load, an error is shown and details are printed to the server console.
+  </Step>
+</Steps>
+
+## Setting up PostgreSQL
+
+<Steps>
+  <Step title="Create the database and user">
+    Connect to your PostgreSQL instance and run:
+
+    ```sql
+    CREATE DATABASE grim;
+    CREATE USER grimuser WITH ENCRYPTED PASSWORD 'yourpassword';
+    GRANT ALL PRIVILEGES ON DATABASE grim TO grimuser;
+    ```
+  </Step>
+  <Step title="Update config/en.yml">
+    ```yaml config/en.yml
+    history:
+        enabled: true
+        entries-per-page: 15
+        server-name: MyServer
+        database:
+            type: POSTGRESQL
+            host: 127.0.0.1
+            port: 5432
+            database: grim
+            username: grimuser
+            password: yourpassword
+    ```
+  </Step>
+  <Step title="Restart the server">
+    Restart the server to apply the database type change. Grim creates the required tables automatically on first connection.
+  </Step>
+  <Step title="Verify connection">
+    Run `/grimac history <anyplayer>`. A successful load shows a history page (empty if no flags have been recorded yet). Connection failures are logged to the console.
+  </Step>
+</Steps>
+
+## SQLite (default)
+
+SQLite requires no external server. Grim stores the database as a local file inside its data folder. No additional configuration is needed beyond enabling history:
+
+```yaml config/en.yml
+history:
+    enabled: true
+    database:
+        type: SQLITE
+```
+
+<Note>
+  SQLite support requires the `minecraft-sqlite-jdbc` mod/plugin to be installed on your server. If the JDBC driver is not found, Grim prints a message to the console and disables the history subsystem. Install the driver or switch to MySQL/PostgreSQL.
+</Note>
+
+## Viewing violation history
+
+Use the `/grimac history` command to browse stored records for a player:
+
+```
+/grimac history <player>
+/grimac history <player> <page>
+/grimac hist <player> [page]
+```
+
+**Permission:** `grim.history`
+
+Output format (configurable via `grim-history-entry` in config):
+
+```
+[ServerName] Failed CheckName (x15)  verbose data  (3h 20m ago)
+```
+
+Records are displayed newest-first within each page. The header shows the current page and total page count.
+
+### Multi-server setup
+
+Set a unique `history.server-name` on each backend server and point all of them at the same MySQL or PostgreSQL database. The server name is stored in each record, so you can distinguish which server produced a given flag when browsing history.

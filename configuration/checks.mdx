@@ -1,0 +1,272 @@
+---
+title: "Check configuration"
+description: "Tune individual check thresholds, setback violations, and decay values directly in config/en.yml."
+---
+
+Most of Grim's detection parameters live in `plugins/GrimAC/config/en.yml`. Each check section exposes a small set of fields that control sensitivity, how aggressively the server corrects cheating movement, and how quickly accumulated violations decay when a player behaves legitimately.
+
+## Common check fields
+
+| Field | Description |
+|-------|-------------|
+| `threshold` | How far a player's movement must deviate from the predicted value before a violation is recorded. Measured in blocks. Lower = more sensitive. |
+| `setbackvl` | The violation count at which the player is teleported back to their last valid position. |
+| `decay` | How much is subtracted from the accumulated violation level each tick when the player is not triggering the check. Higher = violations clear faster. |
+| `setback-decay-multiplier` | A multiplier (e.g. `0.999`) applied to total accumulated advantage each tick when the player is moving legitimately. Used in simulation-style checks. |
+| `max-advantage` | Maximum total accumulated movement advantage (in blocks × 1000) before setbacks begin. `-1` to disable. |
+| `max-ceiling` | Hard cap on how much advantage can accumulate. Prevents violations from building up so far that a player can never clear them. |
+| `immediate-setback-threshold` | If a single tick's deviation exceeds this value, the player is setback immediately regardless of total advantage. `-1` to disable. |
+
+<Note>
+  Not all checks expose every field. Only the fields relevant to that check's detection method appear in the config.
+</Note>
+
+---
+
+## Check sections
+
+<AccordionGroup>
+  <Accordion title="Simulation">
+    The core movement prediction engine. Grim simulates all possible movement vectors each tick and flags when the player's actual position lies outside the predicted set.
+
+    ```yaml config/en.yml
+    Simulation:
+        # Multiplier applied to accumulated advantage each tick when the player is legit.
+        # Visualization: https://www.desmos.com/calculator/d4ufgxrxer
+        setback-decay-multiplier: 0.999
+        # Minimum offset (in blocks) from predicted movement before a violation is counted.
+        threshold: 0.001
+        # Single-tick deviation that triggers an immediate setback. -1 to disable.
+        immediate-setback-threshold: 0.1
+        # Total accumulated advantage before setbacks start. -1 to disable.
+        max-advantage: 1
+        # Hard cap on total advantage accumulation.
+        # After ~50 seconds, decays a player from 4 blocks to 1 block of advantage.
+        max-ceiling: 4
+        # Accumulated violation level before a setback is triggered.
+        # Use 1 for the classic behavior.
+        setback-violation-threshold: 1
+    ```
+
+    **Checks covered:** `Simulation`, `GroundSpoof`, `Timer`, `TimerLimit`, `NoFall` (in punishments)
+
+    The `setback-decay-multiplier` controls how quickly advantage bleeds away during legitimate movement. At the default `0.999`, a player accumulating 4 blocks of advantage takes roughly 50 seconds of clean movement to reduce it to 1 block. See the [Desmos graph](https://www.desmos.com/calculator/d4ufgxrxer) in the comment for a visual representation.
+  </Accordion>
+
+  <Accordion title="Phase">
+    Detects players clipping or glitching through solid blocks. Because entering a block can enable wall-climbing exploits and this check is relatively stable, it uses a low `setbackvl`.
+
+    ```yaml config/en.yml
+    Phase:
+        # Setback after this many violations.
+        setbackvl: 1
+        # Violations decay at this rate per tick when not triggering.
+        decay: 0.005
+    ```
+  </Accordion>
+
+  <Accordion title="NoSlow">
+    Prediction-based check for players who bypass the movement slowdown applied while eating, drinking, blocking, or drawing a bow. Grim accounts for known netcode irregularities, making this significantly more stable than equivalent checks in other anticheats.
+
+    ```yaml config/en.yml
+    # Prediction-based no slow check.
+    # Grim accounts for buggy netcode — hard to false even when spamming right click and offhand.
+    NoSlow:
+        # Deviation from predicted slowed movement before a violation is recorded.
+        # NoSlow typically produces offsets of 0.03–0.2 consistently.
+        threshold: 0.001
+        # Setback quickly on the first item use to remove any advantage gained.
+        setbackvl: 5
+        # Violations decay only when the player IS slowed by an item.
+        decay: 0.05
+    ```
+
+    <Tip>
+      `decay` for NoSlow only decrements when the player is actively using an item and being slowed by it. This prevents legitimate fast item-switching from clearing violations prematurely.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Knockback">
+    Detects players who reduce, ignore, or manipulate knockback velocity received from attacks.
+
+    ```yaml config/en.yml
+    Knockback:
+        setback-decay-multiplier: 0.999
+        # Deviation from the predicted knockback velocity (in blocks).
+        threshold: 0.001
+        immediate-setback-threshold: 0.1
+        max-advantage: 1
+        max-ceiling: 4
+    ```
+
+    The Knockback and Explosion checks share a punishment group in `punishments.yml` because they are both velocity-manipulation detections.
+  </Accordion>
+
+  <Accordion title="Explosion">
+    Detects players manipulating velocity from explosion knockback (TNT, creepers, etc.).
+
+    ```yaml config/en.yml
+    Explosion:
+        threshold: 0.001
+        setbackvl: 3
+    ```
+  </Accordion>
+
+  <Accordion title="TimerA">
+    Detects players sending movement packets faster than real time — the classic "timer" cheat. Players are permitted to accumulate a small balance (`drift`) to handle network jitter.
+
+    ```yaml config/en.yml
+    TimerA:
+        setbackvl: 10
+        # Milliseconds of balance a player can accumulate to compensate for falling behind.
+        # Values above ~200 ms may allow 1.8 fast-use/fast-heal/fast-bow bypasses.
+        drift: 120
+    ```
+
+    **TimerLimit** is a companion check that prevents players from abusing the `drift` balance when they have very high ping:
+
+    ```yaml config/en.yml
+    TimerLimit:
+        # Ping threshold above which Grim starts limiting the timer balance.
+        # Can cause occasional setbacks for legitimate high-latency players.
+        # -1 to disable.
+        ping-abuse-limit-threshold: 1000
+    ```
+  </Accordion>
+
+  <Accordion title="NegativeTimer">
+    Detects players sending movement packets slower than real time. Unlike TimerA, this check flags when players accumulate too much *lag behind* real time — a technique sometimes used to manipulate hit registration.
+
+    ```yaml config/en.yml
+    NegativeTimer:
+        # Milliseconds behind real time before flagging begins.
+        drift: 1200
+    ```
+  </Accordion>
+
+  <Accordion title="VehicleTimer">
+    The same timer detection as TimerA, applied to players riding vehicles (boats, minecarts, horses, etc.).
+
+    ```yaml config/en.yml
+    # Same check method as TimerA, but for vehicles.
+    VehicleTimer:
+        # Targets 1.005× speed — setback after this many violations.
+        setbackvl: 10
+    ```
+  </Accordion>
+
+  <Accordion title="Reach">
+    Detects players hitting entities outside their legitimate reach distance. This check is most powerful with 1.7/1.8 clients on 1.8 servers.
+
+    ```yaml config/en.yml
+    Reach:
+        # Expand hitboxes by this amount. 0.0005 detects 3.0005+ reach.
+        # Note: 1.9–1.18.1 clients have a forced 0.03 expansion due to protocol limitations.
+        threshold: 0.0005
+        # Cancel hits that are provably impossible.
+        # 3.00–3.03 hits may still pass due to packet ordering constraints.
+        block-impossible-hits: true
+        # Send an extra packet at the end of every tick to improve cheat detection.
+        # Increases bandwidth for all players. Recommended only for 1.8 PvP servers.
+        enable-post-packet: false
+    ```
+
+    <Warning>
+      `block-impossible-hits: true` may occasionally allow hits at exactly 3.00–3.03 blocks to pass through. This is a known protocol limitation, not a configuration issue.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="exploit">
+    These options control whether certain known exploits are allowed on your server.
+
+    ```yaml config/en.yml
+    exploit:
+        # Allow sprinting while using an elytra (can produce very high speeds).
+        # Mojang's netcode makes elytra start client-sided and end server-sided,
+        # which allows players to keep adding 0.2 horizontal speed indefinitely.
+        allow-sprint-jumping-when-using-elytra: true
+        # Resynchronize the player when they build on ghost blocks.
+        allow-building-on-ghostblocks: true
+        # Distance (2–4 blocks) to check for ghost blocks when the above is enabled.
+        distance-to-check-if-ghostblocks: 2
+    ```
+  </Accordion>
+
+  <Accordion title="packet-spam-threshold">
+    ```yaml config/en.yml
+    # Number of Grim-cancelled packets per second before the player is kicked.
+    # Required because some packet limiters ignore packets Grim has already cancelled.
+    packet-spam-threshold: 100
+    # Print a stacktrace to console when this kicks a player.
+    debug-packet-cancel: false
+    ```
+  </Accordion>
+
+  <Accordion title="max-ping-out-of-flying">
+    ```yaml config/en.yml
+    # Maximum allowed ping (ms) when transitioning out of flying mode.
+    # Grim does not check players while flying, so this prevents high-latency abuse.
+    # Set to -1 to disable.
+    max-ping-out-of-flying: 1000
+
+    # Maximum ping when a firework boost is removed from an elytra player.
+    # Prevents 1 firework lasting indefinitely for high-latency players.
+    max-ping-firework-boost: 1000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Place checks
+
+Block placement checks share a simple `cancelvl` field — the violation count at which the placement packet is cancelled rather than processed.
+
+```yaml config/en.yml
+AirLiquidPlace:
+    cancelvl: 0
+
+FabricatedPlace:
+    cancelvl: 5
+
+FarPlace:
+    cancelvl: 5
+
+PositionPlace:
+    cancelvl: 5
+
+RotationPlace:
+    cancelvl: 5
+```
+
+| Check | What it detects |
+|-------|-----------------|
+| `AirLiquidPlace` | Placing blocks in air or liquid where placement is not possible. |
+| `FabricatedPlace` | Fabricated/impossible block placement packets. |
+| `FarPlace` | Placing blocks beyond the normal reach distance. |
+| `PositionPlace` | Placement while the player's position is inconsistent. |
+| `RotationPlace` | Placement while the player's rotation is inconsistent. |
+
+---
+
+## Miscellaneous options
+
+```yaml config/en.yml
+# Reset item usage state on various events to prevent desync.
+reset-item-usage-on-item-update: true
+reset-item-usage-on-attack: true
+reset-item-usage-on-slot-change: true
+reset-item-usage-on-item-use: true
+
+# Stop Grim from cancelling pong packets.
+# May improve compatibility with other anticheats but can interact badly with packet limiters.
+disable-pong-cancelling: false
+
+# Disable Grim's default block resync handler.
+# Enable if you use plugins that create fake packet-based blocks (e.g. holograms, custom block plugins).
+disable-default-resync-handler: false
+
+# Cancel duplicate movement packets (Mojang bug MC-12363, fixed in 1.21).
+# Only relevant for 1.17–1.20.5 clients on 1.8 servers.
+cancel-duplicate-packet: true
+```

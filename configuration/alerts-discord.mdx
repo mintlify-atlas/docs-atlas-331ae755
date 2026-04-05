@@ -1,0 +1,246 @@
+---
+title: "Alerts & Discord webhook"
+description: "Configure in-game alerts, verbose mode, proxy-wide alert broadcasting, and Discord webhook notifications."
+---
+
+Grim provides three alert channels: **in-game alerts** broadcast to staff in-game, **proxy alerts** forwarded to other servers on your network, and **Discord webhooks** that post rich embeds to a channel of your choice.
+
+---
+
+## In-game alerts
+
+Players with the `grim.alerts` permission receive real-time notifications whenever a punishment group's `[alert]` command fires.
+
+### Toggling alerts
+
+```bash
+/grimac alerts
+```
+
+This command toggles your personal alert subscription on or off. Your preference persists for the current session. Operators with `grim.alerts` have alerts enabled by default.
+
+### Console alerts
+
+To mirror all in-game alerts to the server console, set the following in `config/en.yml`:
+
+```yaml config/en.yml
+alerts:
+    print-to-console: true
+```
+
+### Alert message format
+
+The alert message template is configured in `punishments/en.yml` via the `alerts-format` key:
+
+```yaml punishments/en.yml
+alerts-format: "%prefix% &f%player% &bfailed &f%check_name% &f(x&c%vl%&f) &7%verbose%"
+```
+
+| Placeholder | Value |
+|-------------|-------|
+| `%prefix%` | Grim's message prefix |
+| `%player%` | Flagged player's name |
+| `%check_name%` | Display name of the triggering check |
+| `%vl%` | Violation count for this check |
+| `%verbose%` | Extra debug details (offsets, state, etc.) |
+| `%description%` | Check's description string |
+| `%experimental%` | `*` if the check is marked experimental, otherwise empty |
+
+The format string supports legacy `&`-style color codes and MiniMessage formatting.
+
+---
+
+## Verbose mode
+
+Verbose mode sends a flag notification for **every single violation**, regardless of whether the punishment threshold has been reached. This is useful for diagnosing false positives.
+
+```bash
+/grimac verbose
+```
+
+Toggle your verbose subscription with this command. Players subscribed to verbose will see every flag from every check in real time, including those below the alert threshold.
+
+To print verbose output to console as well:
+
+```yaml config/en.yml
+verbose:
+    print-to-console: false
+```
+
+<Warning>
+  Verbose mode can be very noisy on a busy server. Enable it temporarily for debugging, not as a permanent alert channel.
+</Warning>
+
+---
+
+## Proxy alerts
+
+Grim can forward alerts across servers on your BungeeCord or Velocity proxy network using plugin messaging channels.
+
+### Configuration
+
+```yaml config/en.yml
+alerts:
+    proxy:
+        # Forward this server's alerts to other servers on the proxy.
+        send: false
+        # Display alerts received from other proxy servers on this server.
+        receive: false
+```
+
+<Info>
+  When using Velocity, you must enable `bungee-plugin-message-channel` in your Velocity configuration (`velocity.toml`) for plugin messaging to work.
+</Info>
+
+### Proxy alert format
+
+A separate format string is used for alerts received from other servers, so staff can distinguish the origin:
+
+```yaml punishments/en.yml
+alerts-format-proxy: "%prefix% &f[&cproxy&f] &f%player% &bfailed &f%check_name% &f(x&c%vl%&f) &7%verbose%"
+```
+
+### Enabling proxy alerts per punishment group
+
+Add `[proxy]` to the commands list of any punishment group in `punishments/en.yml`:
+
+```yaml
+Simulation:
+  commands:
+    - "100:40 [alert]"
+    - "100:100 [proxy]"
+```
+
+---
+
+## Discord webhook
+
+Grim can post rich embed alerts to a Discord channel via a webhook. Configuration lives in `plugins/GrimAC/discord/en.yml`.
+
+<Steps>
+  <Step title="Create a Discord webhook">
+    In Discord, open the channel you want alerts in. Go to **Edit Channel → Integrations → Webhooks → New Webhook**. Copy the webhook URL — it will look like:
+
+    ```
+    https://discord.com/api/webhooks/1234567890/abcdefg...
+    ```
+  </Step>
+
+  <Step title="Enable the webhook in discord/en.yml">
+    Open `plugins/GrimAC/discord/en.yml` and set `enabled: true` and paste your webhook URL:
+
+    ```yaml discord/en.yml
+    enabled: true
+    webhook: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    ```
+  </Step>
+
+  <Step title="Add [webhook] to punishment groups">
+    In `punishments/en.yml`, add a `[webhook]` entry to whichever groups you want Discord notifications for:
+
+    ```yaml punishments/en.yml
+    Reach:
+      commands:
+        - "1:1 [alert]"
+        - "1:1 [webhook]"
+    ```
+
+    The `threshold:interval` format works the same as for other commands — `1:1` means fire on every violation.
+  </Step>
+
+  <Step title="Reload and test">
+    Apply the configuration:
+
+    ```bash
+    /grimac reload
+    ```
+
+    Trigger a test flag (using a second account) and verify that the embed appears in your Discord channel.
+  </Step>
+</Steps>
+
+---
+
+## Discord embed configuration
+
+The full set of embed options in `discord/en.yml`:
+
+```yaml discord/en.yml
+enabled: false
+webhook: ""
+
+# Set to true to allow any valid HTTPS URL (useful for proxies or Matrix bridges).
+disable-webhook-validation: false
+
+embed-title: "**Grim Alert**"
+embed-color: "#00FFFF"
+
+# Include an ISO 8601 timestamp in the embed footer.
+include-timestamp: true
+
+# Replaces backticks in values (like client brand names) to prevent Discord formatting breaks.
+# Set to "`" to disable this replacement.
+backtick-replacement-char: "ˋ"   # U+02CB
+
+# Lines of text shown in the embed body.
+violation-content:
+    - "**Player**: `%player%`"
+    - "**Check**: %check%"
+    - "**Violations**: %violations%"
+    - "**Client Version**: %version%"
+    - "**Brand**: `%brand%`"
+    - "**Ping**: %ping%"
+    - "**TPS**: %tps%"
+```
+
+### Embed content placeholders
+
+| Placeholder | Description |
+|-------------|-------------|
+| `%player%` | Flagged player's username |
+| `%check%` | Display name of the triggering check |
+| `%violations%` | Violation count for this check |
+| `%version%` | Player's Minecraft client version |
+| `%brand%` | Client mod brand (e.g. `vanilla`, `fabric`, `lunarclient:...`) |
+| `%ping%` | Player's current ping in milliseconds |
+| `%tps%` | Server TPS at time of alert |
+| `%uuid%` | Player's UUID (available in image/thumbnail URLs) |
+| `%grim_version%` | Running Grim version (available in footer text) |
+
+### Embed appearance options
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `embed-title` | `**Grim Alert**` | Title of the embed. Supports Discord markdown. |
+| `embed-color` | `#00FFFF` | Hex color of the embed's left border. |
+| `include-timestamp` | `true` | Append an ISO 8601 timestamp to the embed. |
+| `include-verbose` | `true` | Append verbose check data as an embed field. |
+| `embed-thumbnail-url` | `https://crafthead.net/helm/%uuid%` | URL for the embed thumbnail (top-right). Supports `%uuid%`. |
+| `embed-footer-text` | `v%grim_version%` | Text shown in the embed footer. |
+| `embed-footer-url` | Grim logo URL | Icon shown next to the footer text. |
+| `embed-image-url` | *(none)* | Large image shown at the bottom of the embed. |
+
+<Note>
+  `embed-thumbnail-url`, `embed-footer-url`, and `embed-image-url` are not shown in the default config file but can be set to any valid HTTPS URL. `%uuid%` and `%grim_version%` are expanded in these fields.
+</Note>
+
+---
+
+## How the webhook sender works
+
+Grim sends Discord webhooks asynchronously so they never block the server thread. Requests are queued and dispatched one at a time. If Discord returns a `429 Too Many Requests` rate-limit response, Grim reads the `X-RateLimit-Reset` header and pauses sending until the rate limit window expires — queued alerts are not dropped, they are sent once the window clears.
+
+The HTTP client has a **15-second timeout** per request. If Discord is unreachable, an error is logged but the server continues running normally.
+
+### Custom endpoints and proxies
+
+If you route webhooks through a proxy or a Matrix forwarder, set `disable-webhook-validation: true` to bypass the strict Discord URL format check. Any valid HTTPS URL is then accepted:
+
+```yaml discord/en.yml
+disable-webhook-validation: true
+webhook: "https://your-proxy.example.com/discord-webhook"
+```
+
+<Warning>
+  Only disable webhook validation if you control the endpoint. Sending Grim alert data to an untrusted URL exposes player information.
+</Warning>

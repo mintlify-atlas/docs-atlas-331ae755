@@ -1,0 +1,120 @@
+---
+title: "Installation"
+description: "How to download and install Grim Anticheat on Bukkit/Paper/Folia or Fabric, and how to compile from source."
+---
+
+## Requirements
+
+Before installing Grim, confirm your environment meets these requirements:
+
+- **Java 17 or higher** at runtime. Java 21 is required to compile from source.
+- A supported server platform: Spigot, Paper, Folia, or Fabric.
+
+<Note>
+  If you need help upgrading to Java 17, see the [Updating to Java 17](https://github.com/GrimAnticheat/Grim/wiki/Updating-to-Java-17) guide on the Grim Wiki.
+</Note>
+
+## Download
+
+Grim is available from two sources:
+
+| Source | Recommended for | Link |
+|--------|----------------|------|
+| **Modrinth** | Most servers — stable, versioned releases | [modrinth.com/plugin/grimac](https://modrinth.com/plugin/grimac) |
+| **GitHub nightly (Bukkit)** | Bleeding-edge builds for Bukkit/Paper/Folia | [grimac-bukkit.zip](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-bukkit.zip) |
+| **GitHub nightly (Fabric)** | Bleeding-edge builds for Fabric | [grimac-fabric.zip](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-fabric.zip) |
+
+<Tip>
+  Modrinth is the recommended download source for most servers. GitHub nightly artifacts reflect the latest commit and may be less stable.
+</Tip>
+
+## Installation steps
+
+<Tabs>
+  <Tab title="Bukkit / Paper / Folia">
+    <Steps>
+      <Step title="Download the jar">
+        Download the latest Grim build from [Modrinth](https://modrinth.com/plugin/grimac) or grab the nightly [Bukkit artifact](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-bukkit.zip) from GitHub. If you downloaded a `.zip`, extract it to get the `.jar` file.
+      </Step>
+      <Step title="Place the jar in your plugins folder">
+        Copy the `grimac-bukkit.jar` into your server's `plugins/` directory.
+
+        ```
+        server/
+        └── plugins/
+            └── grimac-bukkit.jar
+        ```
+      </Step>
+      <Step title="Start or restart your server">
+        Start (or restart) your server. Grim will generate its configuration files under `plugins/GrimAC/` on first run.
+      </Step>
+      <Step title="Verify installation">
+        Run `/grimac version` in-game or in the server console to confirm Grim loaded successfully and check the version.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Fabric">
+    <Steps>
+      <Step title="Install Fabric Loader">
+        Ensure [Fabric Loader](https://fabricmc.net/use/installer/) is installed for your Minecraft version before proceeding.
+      </Step>
+      <Step title="Download the jar">
+        Download the latest Grim Fabric build from [Modrinth](https://modrinth.com/plugin/grimac) or grab the nightly [Fabric artifact](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-fabric.zip) from GitHub. If you downloaded a `.zip`, extract it to get the `.jar` file.
+      </Step>
+      <Step title="Place the jar in your mods folder">
+        Copy the `grimac-fabric.jar` into your server's `mods/` directory.
+
+        ```
+        server/
+        └── mods/
+            └── grimac-fabric.jar
+        ```
+      </Step>
+      <Step title="Start or restart your server">
+        Start (or restart) your Fabric server. Grim will generate its configuration files on first run.
+      </Step>
+      <Step title="Verify installation">
+        Run `/grimac version` in-game or in the server console to confirm Grim loaded successfully.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Compiling from source
+
+If you want to build Grim yourself from the latest source code, you need **Java 21** and **Git** installed.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/GrimAnticheat/Grim.git
+    ```
+  </Step>
+  <Step title="Enter the project directory">
+    ```bash
+    cd Grim
+    ```
+  </Step>
+  <Step title="Run the Gradle build">
+    ```bash
+    ./gradlew build
+    ```
+
+    On Windows, use `gradlew.bat build` instead.
+  </Step>
+  <Step title="Locate the compiled jars">
+    The compiled jars are output to platform-specific build directories:
+
+    ```
+    Grim/
+    ├── bukkit/build/libs/   ← Bukkit/Paper/Folia jar
+    └── fabric/build/libs/   ← Fabric jar
+    ```
+
+    Copy the appropriate jar to your server's `plugins/` or `mods/` folder.
+  </Step>
+</Steps>
+
+<Note>
+  Java 21 is required to compile from source. Java 17 is the minimum version required to run the compiled plugin.
+</Note>

@@ -1,0 +1,80 @@
+---
+title: "FAQ"
+description: "Answers to the most common questions about Grim Anticheat."
+---
+
+<AccordionGroup>
+  <Accordion title="What Minecraft versions does Grim support?">
+    Grim supports Minecraft **1.8 through 1.21**. Cross-version accuracy is a core design goal — 1.12 and older clients on 1.13+ servers (and the reverse) are handled correctly, including per-version collision boxes, waterlogged block rules, and ViaVersion replacement blocks.
+  </Accordion>
+
+  <Accordion title="What server platforms does Grim support?">
+    Grim runs on **Spigot**, **Paper**, **Folia**, and **Fabric**. The platform is detected automatically at startup using class presence checks — no extra configuration is required.
+
+    Download links:
+    - [Modrinth](https://modrinth.com/plugin/grimac) — recommended; contains both the Bukkit and Fabric builds.
+    - GitHub nightly artifacts — bleeding-edge builds for [Bukkit](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-bukkit.zip) and [Fabric](https://nightly.link/GrimAnticheat/Grim/workflows/gradle-publish/2.0/grimac-fabric.zip).
+  </Accordion>
+
+  <Accordion title="Is Grim free?">
+    Yes. Grim is open source under the **GPL-3.0** license. A premium version is planned that will offer additional subscription-based checks (such as heuristics), but the current 2.0 branch is fully free.
+
+    Because of the GPL-3.0 license, modified binaries or plugins that copy Grim code must either be kept private or have their full source code available to buyers at no additional cost.
+  </Accordion>
+
+  <Accordion title="Does Grim support Bedrock / Geyser players?">
+    Geyser players are **fully exempt** from all checks. Grim detects Geyser connections and disables its checks entirely for those players to prevent false positives caused by Bedrock–Java protocol differences.
+
+    If you use a proxy setup, Floodgate must be installed on the backend server (the one running Grim) so that Grim can access the Floodgate API to identify Bedrock players correctly.
+  </Accordion>
+
+  <Accordion title="Can Grim run alongside other anticheats?">
+    Generally yes, but conflicts can occur depending on how other plugins interact with the netty pipeline. Specific potential conflicts to watch for:
+
+    - **Packet cancellation**: If another anticheat or plugin cancels packets that Grim expects to process, false positives or missed detections may occur.
+    - **Pong packets**: If you experience compatibility issues with another anticheat, try setting `disable-pong-cancelling: true` in `en.yml`. Note that this may affect packet limiters.
+    - **Pipeline injection**: Enable `debug-pipeline-on-join: true` in `en.yml` to log all plugins that have injected into the netty pipeline on player join. This helps identify conflicts.
+
+    See the [Compatibility](/troubleshooting/compatibility) page for specific plugin guidance.
+  </Accordion>
+
+  <Accordion title="Where do I report false positives?">
+    The best places to report false positives are:
+
+    1. **Discord** — Join the [Grim Discord](https://discord.grim.ac) and describe the reproduction steps in the support channel. Include the check name, client version, server version, and any `/grimac verbose` output.
+    2. **GitHub Issues** — If you can reliably reproduce the false positive, open an issue on the [GitHub repository](https://github.com/GrimAnticheat/Grim).
+
+    Before reporting, follow the steps on the [False positives](/troubleshooting/false-positives) page to confirm it is genuinely a false positive and gather the information needed for a useful report.
+  </Accordion>
+
+  <Accordion title="How do I disable a specific check?">
+    You have two options depending on scope:
+
+    **Per-player exemption via permission** — Grant the player the permission `grim.exempt.<checkname>` (where `<checkname>` is the check's config name in lowercase). This prevents the check from flagging that player without disabling it for everyone.
+
+    **Server-wide via config** — In `en.yml`, find the check's config block and set `enabled: false`, or raise its `setbackvl` and `threshold` values high enough that it never triggers in practice.
+
+    For experimental checks that are off by default, ensure `experimental-checks: false` is set (it is the default).
+
+    See [False positives — tuning thresholds](/troubleshooting/false-positives) for detailed steps.
+  </Accordion>
+
+  <Accordion title="What Java version is required?">
+    - **Runtime**: Java **17 or higher** is required to run Grim. Grim will log a warning on startup if you are running an older version and indicates it will drop support in a future release.
+    - **Compile**: Java **21** is required to compile Grim from source.
+
+    If you need to update Java, refer to the [Updating to Java 17](https://github.com/GrimAnticheat/Grim/wiki/Updating-to-Java-17) wiki page.
+  </Accordion>
+
+  <Accordion title="Does Grim affect server TPS?">
+    Grim is designed to have **minimal impact on TPS**. All movement checks and the vast majority of event listeners run on the netty thread rather than the main server thread, so Grim's processing does not count against your main-thread tick time. The plugin scales to many hundreds of concurrent players.
+
+    The one setting that increases bandwidth (not TPS) is `Reach.enable-post-packet: true`, which sends an additional packet per tick per player to catch more reach cheats. This is off by default and only recommended for 1.8 PvP-focused servers.
+  </Accordion>
+
+  <Accordion title="What is the current project status?">
+    Grim 2.0 is considered **feature-complete** for the open-source branch. Active development focuses on bug fixes and accuracy improvements. New heuristic-based checks and additional detections are planned for the upcoming premium version.
+
+    Pull requests for bug fixes and enhancements are welcome — see [CONTRIBUTING.md](https://github.com/GrimAnticheat/Grim/blob/2.0/CONTRIBUTING.md) for guidelines. Note that heuristic-based checks and checks that can be easily circumvented without blocking packets will not be accepted into the open-source branch.
+  </Accordion>
+</AccordionGroup>

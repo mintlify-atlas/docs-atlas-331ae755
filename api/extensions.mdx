@@ -1,0 +1,111 @@
+---
+title: "Extensions"
+description: "Register your plugin as a Grim extension to unlock deeper integration: custom checks, custom config, and cross-extension communication."
+---
+
+A Grim **extension** is any plugin or mod that registers itself with Grim's `GrimExtensionManager`. Extensions get a `GrimPlugin` handle that is used throughout the API for lifecycle management — most importantly, all event listeners and scheduled tasks registered with a `GrimPlugin` context are automatically cleaned up when that plugin is disabled.
+
+## GrimPlugin interface
+
+`GrimPlugin` is the platform-agnostic representation of a plugin or mod in the Grim API:
+
+```java
+package ac.grim.grimac.api.plugin;
+
+public interface GrimPlugin {
+    GrimPluginDescription getDescription(); // name, version, etc.
+    Logger getLogger();
+    File   getDataFolder();
+}
+```
+
+On Bukkit, your `JavaPlugin` instance is automatically wrapped into a `GrimPlugin` when you pass `this` as a `pluginContext` to any API method. On Fabric, your `ModInitializer`, `ModContainer`, or mod ID string are accepted as context objects.
+
+## Resolving a GrimPlugin
+
+```java
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+
+// Resolve your plugin instance into a GrimPlugin wrapper
+GrimPlugin myGrimPlugin = api.getGrimPlugin(this); // 'this' = your JavaPlugin
+```
+
+Cache the resolved `GrimPlugin` instance if you plan to make many API calls, because each resolution call performs a lookup:
+
+```java
+// Recommended pattern
+private GrimPlugin grimPlugin;
+
+@Override
+public void onEnable() {
+    GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+    grimPlugin = api.getGrimPlugin(this);
+
+    // Now pass grimPlugin instead of 'this' for performance
+    api.getEventBus().subscribe(grimPlugin, FlagEvent.class, this::onFlag);
+}
+```
+
+## GrimExtensionManager
+
+`GrimExtensionManager` is accessed from the main `GrimAPI` singleton:
+
+```java
+GrimExtensionManager extensions = GrimAPI.INSTANCE.getExtensionManager();
+```
+
+It resolves platform-specific plugin/mod objects to `GrimPlugin` wrappers via `getPlugin(Object platformContext)`. This is the same resolution that `GrimAbstractAPI.getGrimPlugin(Object)` delegates to internally.
+
+## Cross-extension communication
+
+If you need to retrieve another extension's `GrimPlugin` handle (e.g. to check whether a companion extension is loaded), use:
+
+```java
+GrimPlugin otherPlugin = api.getGrimPlugin(otherJavaPluginInstance);
+// or by class:
+GrimPlugin otherPlugin = api.getGrimPlugin(OtherPluginMainClass.class);
+```
+
+## What an extension can provide
+
+Extensions can integrate with Grim at multiple levels:
+
+<Accordion title="Custom config backend">
+  Implement `ConfigManager` and call `api.reload(myConfigManager)` during your `onEnable`. Grim will use your implementation as the source of truth for all config reads. See [Config manager](/api/config-manager) for details.
+</Accordion>
+
+<Accordion title="Custom checks">
+  Subclass `Check` (or any `type.*` check base class such as `PacketCheck`, `PositionCheck`, etc.), annotate with `@CheckData`, and register with Grim's player data manager. Because Grim instantiates checks per-player, registration must happen before players join or be injected into existing player sessions.
+
+  ```java
+  // Register your check class so Grim instantiates it for every new player
+  GrimAPI.INSTANCE.getPlayerDataManager().registerCheck(MyCheckA.class);
+  ```
+</Accordion>
+
+<Accordion title="Custom alert handling">
+  Subscribe to `FlagEvent` on the event bus to intercept all flags. You can cancel the event, forward the data to a proxy, write to a database, or send alerts to a custom Discord webhook — all without modifying Grim itself.
+
+  ```java
+  api.getEventBus().subscribe(grimPlugin, FlagEvent.class, event -> {
+      myAlertService.notify(
+          event.getUser().getName(),
+          event.getCheck().getCheckName(),
+          event.getViolations(),
+          event.getVerbose()
+      );
+  });
+  ```
+</Accordion>
+
+<Accordion title="Custom message placeholders">
+  Register player-contextual or static placeholders that will be resolved in Grim's alert and punishment messages. See [Placeholders](/api/placeholders) for details.
+</Accordion>
+
+## Lifecycle and cleanup
+
+Grim automatically unregisters all event listeners and scheduled tasks associated with a `GrimPlugin` context when that plugin is disabled. You do not need to call `unregisterAllListeners` manually on shutdown for listeners registered through a proper plugin context.
+
+<Note>
+Always pass your resolved `GrimPlugin` (or your `JavaPlugin` `this`) as the context to every API registration. Passing `null` or an unrecognised object will throw an `IllegalArgumentException`.
+</Note>

@@ -1,0 +1,143 @@
+---
+title: "API installation"
+description: "Add GrimAPI as a compile-time dependency and configure your plugin descriptor to load after Grim."
+---
+
+Grim's public API is published as a standalone library at [github.com/GrimAnticheat/GrimAPI](https://github.com/GrimAnticheat/GrimAPI). You add it to your project as a `compileOnly` dependency (it ships inside the Grim plugin jar, so you must **not** shade it).
+
+<Steps>
+
+<Step title="Add JitPack to your repositories">
+
+GrimAPI is published via JitPack. Add the JitPack repository to your build file.
+
+<CodeGroup>
+
+```kotlin Gradle (Kotlin DSL)
+repositories {
+    maven("https://jitpack.io")
+}
+```
+
+```groovy Gradle (Groovy DSL)
+repositories {
+    maven { url 'https://jitpack.io' }
+}
+```
+
+```xml Maven
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Declare the GrimAPI dependency">
+
+Replace `TAG` with the release tag you want to target (e.g. `1.0.0.0`). Browse available tags at [github.com/GrimAnticheat/GrimAPI/releases](https://github.com/GrimAnticheat/GrimAPI/releases).
+
+<CodeGroup>
+
+```kotlin Gradle (Kotlin DSL)
+dependencies {
+    compileOnly("com.github.GrimAnticheat:GrimAPI:TAG")
+}
+```
+
+```groovy Gradle (Groovy DSL)
+dependencies {
+    compileOnly 'com.github.GrimAnticheat:GrimAPI:TAG'
+}
+```
+
+```xml Maven
+<dependencies>
+    <dependency>
+        <groupId>com.github.GrimAnticheat</groupId>
+        <artifactId>GrimAPI</artifactId>
+        <version>TAG</version>
+        <scope>provided</scope>
+    </dependency>
+</dependencies>
+```
+
+</CodeGroup>
+
+<Warning>
+Always use `compileOnly` / `provided` scope. GrimAPI classes are loaded at runtime by the Grim plugin. Shading them into your jar will cause `ClassCastException` errors when you try to cast across classloaders.
+</Warning>
+
+</Step>
+
+<Step title="Declare the dependency in plugin.yml">
+
+Tell Bukkit to load your plugin after Grim. Use `depend` if your plugin cannot function without Grim, or `softdepend` if Grim is optional.
+
+```yaml plugin.yml (hard dependency)
+name: MyPlugin
+version: 1.0.0
+main: com.example.MyPlugin
+depend:
+  - Grim
+```
+
+```yaml plugin.yml (soft dependency)
+name: MyPlugin
+version: 1.0.0
+main: com.example.MyPlugin
+softdepend:
+  - Grim
+```
+
+</Step>
+
+<Step title="Access the API at runtime">
+
+Retrieve the `GrimAbstractAPI` instance in your plugin's `onEnable`. The recommended approach for soft-depend code is the Bukkit `ServicesManager`, which returns `null` if Grim is not loaded:
+
+```java
+import ac.grim.grimac.api.GrimAbstractAPI;
+import org.bukkit.Bukkit;
+
+public class MyPlugin extends JavaPlugin {
+
+    private GrimAbstractAPI grimAPI;
+
+    @Override
+    public void onEnable() {
+        if (Bukkit.getPluginManager().getPlugin("Grim") != null) {
+            grimAPI = Bukkit.getServicesManager().load(GrimAbstractAPI.class);
+            if (grimAPI != null) {
+                getLogger().info("Hooked into Grim " + grimAPI.getGrimVersion());
+                registerGrimListeners();
+            }
+        }
+    }
+
+    private void registerGrimListeners() {
+        grimAPI.getEventBus().subscribe(this, FlagEvent.class, this::onFlag);
+    }
+}
+```
+
+If you have a hard `depend` on Grim you can use the singleton directly:
+
+```java
+import ac.grim.grimac.GrimAPI;
+
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+```
+
+<Note>
+`GrimAPI.INSTANCE.getExternalAPI()` and the `ServicesManager` both return the same instance. The `ServicesManager` approach is safer for soft-depend plugins because it compiles even if GrimAPI is absent from the classpath at build time (with `compileOnly` the class is still present, but the intent is clearer).
+</Note>
+
+</Step>
+
+</Steps>

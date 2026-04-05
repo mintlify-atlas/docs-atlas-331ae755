@@ -1,0 +1,548 @@
+---
+title: "Miscellaneous checks"
+description: "Sprint, MultiActions, scaffolding, block breaking, Baritone detection, chat, exploit, elytra, and vehicle checks."
+---
+
+This page covers checks that do not belong to movement prediction, combat, or core packet validation. Most of them enforce game-rule constraints (you cannot sprint while starving, you cannot place blocks against air, etc.) or detect client patterns associated with specific cheat modules.
+
+## Sprint checks
+
+<AccordionGroup>
+  <Accordion title="SprintA — Low hunger sprint">
+    **Check name:** `SprintA`
+    **Description:** Sprinting with too low hunger
+    **Config:** `setbackvl: 0`
+
+    Detects players who send a sprinting movement packet while their food level is below `6` (the vanilla minimum for sprinting). Players with the `canFly` flag set are exempt because creative/spectator flight does not require food.
+
+    The `setbackvl: 0` means the check only alerts; it does not trigger a position setback. The offending packet is cancelled instead.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintB — Sprint while sneaking or crawling (experimental)">
+    **Check name:** `SprintB`
+    **Description:** Sprinting while sneaking or crawling
+    **Config:** `setbackvl: 5`
+
+    Sneaking and crawling both prevent sprinting in vanilla. Clients that send a sprint flag while also sending a sneak or crawl state are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintC — Sprint while using an item (experimental)">
+    **Check name:** `SprintC`
+    **Description:** Sprinting while using an item
+    **Config:** `setbackvl: 5`
+
+    Vanilla halts sprinting the moment a player begins using an item (bow, food, potion, shield). Clients that maintain sprint state while actively using an item are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintD — Sprint with blindness (experimental)">
+    **Check name:** `SprintD`
+    **Description:** Started sprinting while having blindness
+    **Config:** `setbackvl: 5`
+
+    Blindness prevents starting a new sprint in vanilla. This check flags clients that begin sprinting while the blindness effect is active.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintE — Sprint into wall (experimental)">
+    **Check name:** `SprintE`
+    **Description:** Sprinting while colliding with a wall
+    **Config:** `setbackvl: 5`
+
+    Vanilla stops sprinting when the player runs into a wall (horizontal collision). Clients that maintain sprint state through a wall collision are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintF — Sprint while gliding (experimental)">
+    **Check name:** `SprintF`
+    **Description:** Sprinting while gliding
+
+    Elytra gliding and sprinting are mutually exclusive states. Clients that report both simultaneously are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="SprintG — Sprint while in water (experimental)">
+    **Check name:** `SprintG`
+    **Description:** Sprinting while in water
+
+    Swimming sprint (added in 1.13) has specific conditions. This check detects sprint state being sent in water contexts where vanilla would not permit it.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## MultiActions checks
+
+MultiActions checks detect packets that are mutually exclusive in vanilla but sent simultaneously by modified clients.
+
+<AccordionGroup>
+  <Accordion title="MultiActionsA — Attack while using item (experimental)">
+    **Check name:** `MultiActionsA`
+    **Description:** Attacked while using an item
+
+    Detects attack packets sent in the same tick as an active item-use action. Vanilla resets item use on attack, so both cannot happen in the same tick from a legitimate client.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsB — Break while using item (experimental)">
+    **Check name:** `MultiActionsB`
+    **Description:** Breaking blocks while using an item
+
+    Detects a `PLAYER_DIGGING` start packet in the same tick as an active item use.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsC — Inventory click while moving">
+    **Check name:** `MultiActionsC`
+    **Description:** Clicked in inventory while moving
+
+    Inventory windows cannot be open while the player is actively moving in vanilla. Sending inventory click packets during movement is a classic indicator of a inventory-walk module.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsD — Inventory close while moving">
+    **Check name:** `MultiActionsD`
+    **Description:** Closed inventory while moving
+
+    Similarly, closing an inventory while a movement packet is in-flight indicates impossible simultaneous actions.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsE — Swing while using item (experimental)">
+    **Check name:** `MultiActionsE`
+    **Description:** Swinging while using an item
+
+    Arm swing animations are suppressed during item use in vanilla. Sending both in the same tick flags this check.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsF — Block and entity interaction in same tick (experimental)">
+    **Check name:** `MultiActionsF`
+    **Description:** Interacting with a block and an entity in the same tick
+
+    Vanilla only processes one type of interaction (block or entity) per tick. Sending both types in the same tick is a known exploit used to gain item-use advantages.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiActionsG — Actions while rowing a boat (experimental)">
+    **Check name:** `MultiActionsG`
+    **Description:** Attacking or using items while rowing a boat
+
+    Boat paddling input (`STEER_VEHICLE`) and attack/use-item actions cannot occur simultaneously in vanilla.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Scaffolding and block placement checks
+
+<AccordionGroup>
+  <Accordion title="AirLiquidPlace — Place against invalid support">
+    **Check name:** `AirLiquidPlace`
+    **Description:** Placed a block against an invalid support
+
+    Detects players placing blocks against an air or liquid face, which vanilla clients cannot do (blocks must be placed against a solid face). The check is carefully designed around a known false-positive source: when a player breaks and places in the same tick, Grim processes the break before the place, which temporarily shows air at the support location.
+
+    **Config options (`en.yml` → `AirLiquidPlace`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `cancelvl` | `0` | Violations before packet cancellation |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="FabricatedPlace — Out of bounds cursor position">
+    **Check name:** `FabricatedPlace`
+    **Description:** Sent out of bounds cursor position
+
+    The cursor position in a block placement packet describes where on the block face the player clicked. Valid values are in `[0.0, 1.0]` for each axis. Values outside this range are fabricated by a modified client.
+
+    **Config options (`en.yml` → `FabricatedPlace`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `cancelvl` | `5` | Violations before packet cancellation |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="FarPlace — Placing from too far away">
+    **Check name:** `FarPlace`
+    **Description:** Placing blocks from too far away
+
+    Detects block placements where the distance from the player's position to the target block exceeds the vanilla reach limit.
+
+    **Config options (`en.yml` → `FarPlace`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `cancelvl` | `5` | Violations before packet cancellation |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="PositionPlace — Place against hidden face">
+    **Check name:** `PositionPlace`
+    **Description:** Placed a block against a hidden face
+
+    Detects block placements where the player's position makes it geometrically impossible to see or interact with the block face they claim to be placing against. Used to detect scaffold hacks that place blocks behind the player.
+
+    **Config options (`en.yml` → `PositionPlace`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `cancelvl` | `5` | Violations before packet cancellation |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="RotationPlace — Place without looking">
+    **Check name:** `RotationPlace`
+    **Description:** Placed a block while not looking at it
+
+    Detects block placements where the player's current look direction does not intersect the placed-against block face, indicating the placement was automated regardless of where the player was looking.
+
+    **Config options (`en.yml` → `RotationPlace`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `cancelvl` | `5` | Violations before packet cancellation |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="InvalidPlaceA — Invalid cursor position">
+    **Check name:** `InvalidPlaceA`
+    **Description:** Sent invalid cursor position
+
+    A broader validation of the cursor position vector in placement packets, covering NaN values and other malformed inputs beyond just out-of-bounds values.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="InvalidPlaceB — Impossible block face id">
+    **Check name:** `InvalidPlaceB`
+    **Description:** Sent impossible block face id
+
+    Detects block placement packets with a block face value that is not one of the six valid face directions (DOWN, UP, NORTH, SOUTH, WEST, EAST).
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiPlace — Multiple blocks in one tick (experimental)">
+    **Check name:** `MultiPlace`
+    **Description:** Placed multiple blocks in a tick
+
+    Detects clients that send more than one block placement packet per game tick. Vanilla clients process at most one placement per tick.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="DuplicateRotPlace — Duplicate rotation on placement (experimental)">
+    **Check name:** `DuplicateRotPlace`
+
+    Detects block placements where the rotation embedded in the placement packet is identical to the previous tick's rotation, while also not matching the actual rotation the player sent in their movement packet. Used to detect scaffold hacks that recycle stale rotation data.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Block breaking checks
+
+<AccordionGroup>
+  <Accordion title="AirLiquidBreak — Breaking unbreakable block">
+    **Check name:** `AirLiquidBreak`
+    **Description:** Breaking a block that cannot be broken
+
+    Detects players sending a dig-complete packet for an air or liquid block, or a block that has no breaking hitbox. On 1.15.2 and older, fire has no hitbox, so it is treated specially.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="FastBreak — Breaking blocks too quickly">
+    **Check name:** `FastBreak`
+    **Description:** Breaking blocks too quickly
+
+    Detects clients that complete block breaking faster than the server calculates the break time should take, accounting for tool speed, enchantments, effects, and being on or in a block.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="FarBreak — Breaking from too far away (experimental)">
+    **Check name:** `FarBreak`
+    **Description:** Breaking blocks too far away
+
+    Detects dig packets where the target block is beyond the vanilla reach distance for breaking.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="InvalidBreak — Impossible block face">
+    **Check name:** `InvalidBreak`
+    **Description:** Sent impossible block face id
+
+    Validates the block face field in `PLAYER_DIGGING` packets, similar to `InvalidPlaceB`.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="WrongBreak — Wrong block broken">
+    **Check name:** `WrongBreak`
+
+    Detects players who send a break-finish packet for a different block than the one they started breaking.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="MultiBreak — Multiple break starts in one tick (experimental)">
+    **Check name:** `MultiBreak`
+
+    Detects multiple `START_DIGGING` packets in a single tick, indicating the client is sending more break requests than the game loop allows.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="NoSwingBreak — Breaking without swinging (experimental)">
+    **Check name:** `NoSwingBreak`
+    **Description:** Did not swing while breaking block
+
+    Vanilla clients always send an arm swing animation when breaking blocks. Clients that omit the swing animation are likely using a silentbreak module.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="PositionBreakA, PositionBreakB — Position consistency on break">
+    **Check names:** `PositionBreakA`, `PositionBreakB`
+
+    Validate that the player's position when finishing a break is consistent with the position when starting the break. Large discrepancies indicate the client teleported mid-break to extend reach.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="RotationBreak — Looking away during break (experimental)">
+    **Check name:** `RotationBreak`
+
+    Detects players whose look direction at break-finish does not intersect the block they were breaking, indicating the break was automated.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Baritone detection
+
+<AccordionGroup>
+  <Accordion title="Baritone">
+    **Check name:** `Baritone`
+
+    Detects the Baritone pathfinding bot by its characteristic rotation pattern: no yaw change combined with a small (< 1°) pitch change that does not land on exactly ±90°, while also having a divisor below the minimum threshold for a legitimate sensitivity setting.
+
+    <Note>
+    Baritone has patched this detection and may also produce false positives with the cinematic camera. This check is kept as a best-effort signal and is disabled by default. Enable it only with `experimental-checks: true`.
+    </Note>
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Chat checks
+
+<AccordionGroup>
+  <Accordion title="ChatA — Empty tab-complete (experimental)">
+    **Check name:** `ChatA`
+
+    Detects `TAB_COMPLETE` packets with an empty or whitespace-only text field, or a text field consisting only of `/`. On 1.13+ servers, these packets trigger server-side command suggestion logic that can be abused as a spam vector.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ChatB — Invalid chat message">
+    **Check name:** `ChatB`
+    **Description:** Invalid chat message
+
+    Validates chat packets for characters or sequences that are not legal in vanilla chat messages (e.g., null bytes, control characters outside the allowed set).
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ChatC — Moving while chatting (experimental)">
+    **Check name:** `ChatC`
+    **Description:** Moving while chatting
+
+    Detects movement packets sent while the chat input screen is open. Vanilla clients pause movement processing while the chat UI is focused.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ChatD — Chatting while chat is hidden (experimental)">
+    **Check name:** `ChatD`
+    **Description:** Chatting while chat is hidden
+
+    Detects chat packets sent by a player whose client settings indicate chat is disabled/hidden.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Exploit checks
+
+<AccordionGroup>
+  <Accordion title="ExploitA — Anvil item name too long">
+    **Check name:** `ExploitA`
+    **Description:** Too long item name in anvil
+
+    Detects anvil rename packets with an item name exceeding vanilla length limits. Excessively long names can cause component overflow or crash legacy clients receiving the item.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ExploitB — Invalid book edit">
+    **Check name:** `ExploitB`
+    **Description:** Invalid book edit
+
+    Validates book-edit packets for page counts, per-page character limits, and illegal characters that exceed what the vanilla book UI allows. Oversized books can crash clients or corrupt storage.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Elytra checks
+
+<AccordionGroup>
+  <Accordion title="ElytraA — Gliding while already gliding">
+    **Check name:** `ElytraA`
+    **Description:** Started gliding while already gliding
+
+    Detects `ENTITY_ACTION START_FALL_FLYING` sent when the player is already in elytra glide state. This is impossible with a vanilla client and indicates a packet-replay or elytra-spam exploit.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraB — Gliding without jumping">
+    **Check name:** `ElytraB`
+    **Description:** Started gliding without jumping
+
+    Elytra activation requires the player to jump first. Clients that send the glide start action without a preceding jump packet are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraC — Gliding too frequently">
+    **Check name:** `ElytraC`
+    **Description:** Started gliding too frequently
+
+    Detects players who activate elytra gliding more often than the activation cooldown allows.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraD — Gliding without an elytra (experimental)">
+    **Check name:** `ElytraD`
+    **Description:** Started gliding without an elytra
+
+    Detects glide-start packets sent when the player does not have an elytra equipped in their chestplate slot.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraE — Gliding while flying (experimental)">
+    **Check name:** `ElytraE`
+    **Description:** Started gliding while flying
+
+    Creative/spectator flight and elytra glide are mutually exclusive. Clients that enter glide state while already in flight mode are flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraF — Gliding while on the ground">
+    **Check name:** `ElytraF`
+    **Description:** Started gliding while on ground
+
+    Vanilla only allows glide activation while airborne. Sending a glide-start action while the server considers the player grounded is impossible with a vanilla client.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="ElytraG–I — Gliding with incompatible states (experimental)">
+    **Check names:** `ElytraG`, `ElytraH`, `ElytraI`
+
+    - **ElytraG** — Started gliding with the levitation effect active
+    - **ElytraH** — Started gliding while inside a vehicle
+    - **ElytraI** — Started gliding while in water
+
+    Each of these states prevents elytra activation in vanilla.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Vehicle checks
+
+<AccordionGroup>
+  <Accordion title="VehicleA — Impossible input values">
+    **Check name:** `VehicleA`
+    **Description:** Impossible input values
+
+    Detects `STEER_VEHICLE` packets where the forward or sideways input exceeds `0.98` in absolute value. Vanilla clients normalise these inputs to the range `[-0.98, 0.98]`; values outside this range are fabricated.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="VehicleB — Claimed to be in a vehicle while not">
+    **Check name:** `VehicleB`
+    **Description:** Claimed to be in a vehicle while not in a vehicle
+
+    Detects vehicle-input packets sent by a player who is not currently mounted. This prevents exploits that abuse vehicle physics from outside a vehicle.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="VehicleC — Vehicle movement prediction">
+    **Check name:** `VehicleC`
+
+    The vehicle equivalent of the `Simulation` check. Grim runs the vehicle's movement equations server-side and flags deviations above the threshold. This catches speed and fly hacks that operate while mounted.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="VehicleD — Jump in non-jumpable vehicle (experimental)">
+    **Check name:** `VehicleD`
+    **Description:** Jumped in a vehicle that cannot jump
+
+    Some vehicle types (boats, minecarts) do not support jumping. Sending a jump-vehicle action while in one of these is flagged.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="VehicleE — Boat paddles outside boat (experimental)">
+    **Check name:** `VehicleE`
+    **Description:** Sent boat paddle states while not in a boat
+
+    Paddle-state packets are only valid while in a boat. Sending them outside a boat triggers this check.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="VehicleF — Incorrect boat paddle states (experimental)">
+    **Check name:** `VehicleF`
+    **Description:** Sent incorrect boat paddle states
+
+    Validates that the combination of left/right paddle states in boat-steer packets is consistent with the player's current input.
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>

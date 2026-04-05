@@ -1,0 +1,161 @@
+---
+title: "False positives"
+description: "How to identify, investigate, and resolve false positive flags in Grim Anticheat."
+---
+
+A false positive occurs when Grim flags a legitimate player. Because Grim uses a prediction engine — simulating every possible movement server-side — false positives are uncommon, but they can occur due to latency, mod interactions, or configuration. This page walks through how to investigate and resolve them.
+
+## Investigating a false positive
+
+<Steps>
+  <Step title="Reproduce the flag">
+    Ask the player to repeat the action that triggered the alert while you watch. Note the exact check name reported in the alert (for example, `Simulation`, `Reach`, `NoSlow`). You will need the check name for every subsequent step.
+
+    Alerts appear in chat if you have the `grim.alerts` permission and have run `/grimac alerts`. They also appear in console if `alerts.print-to-console: true` is set in `en.yml` (the default).
+  </Step>
+
+  <Step title="Enable verbose output">
+    Run the following command to toggle verbose output for yourself. Verbose output shows per-flag detail including the numeric offset that triggered the flag:
+
+    ```text
+    /grimac verbose
+    ```
+
+    Verbose output shows the violation level, offset values, and any extra context the check reports. If the offset is very small and close to the configured `threshold`, the flag is borderline and may indicate a configuration tuning issue rather than cheating.
+
+    To stop verbose output, run `/grimac verbose` again to toggle it off.
+
+    <Note>
+      Verbose output also appears in console if `verbose.print-to-console: true` is set in `en.yml`. This is off by default.
+    </Note>
+  </Step>
+
+  <Step title="Check the player's profile">
+    Run `/grimac profile <player>` to view the player's current violation levels, client version, ping, and any active exemptions. High ping is a common contributing factor — see the latency section below.
+  </Step>
+
+  <Step title="Enable the debug pipeline (if needed)">
+    If the false positive only occurs with certain plugins installed, check for pipeline injection conflicts. Set `debug-pipeline-on-join: true` in `en.yml` and have the player rejoin. Grim will log every plugin that has injected into the netty pipeline, which helps identify whether another plugin is interfering with packet processing.
+
+    ```yaml
+    # en.yml
+    debug-pipeline-on-join: true
+    ```
+
+    Remember to set it back to `false` once you have finished diagnosing.
+  </Step>
+
+  <Step title="Apply a fix">
+    Based on what you find, choose the appropriate resolution from the sections below.
+  </Step>
+</Steps>
+
+---
+
+## Exempting a player from all checks
+
+Grant the player the `grim.exempt` permission. This exempts the player from all Grim checks entirely — no violations are recorded, no setbacks occur, and no alerts are sent.
+
+```text
+grim.exempt
+```
+
+Use this sparingly — it is intended for staff or trusted players who need to be fully excluded from anticheat.
+
+---
+
+## Exempting a player from a specific check
+
+Grant the player the `grim.exempt.<checkname>` permission, where `<checkname>` is the check's config name (found as the top-level key in `en.yml`, for example `Simulation`, `Reach`, `NoSlow`) converted to lowercase.
+
+```text
+grim.exempt.simulation
+grim.exempt.reach
+grim.exempt.noslow
+```
+
+The exemption is evaluated per-player at runtime via `Check.updatePermissions()` — no restart is required when granting the permission through a permission plugin.
+
+---
+
+## Preventing setbacks without removing alerts
+
+If you want Grim to keep flagging and alerting on a check but not teleport the player back, grant the `grim.nosetback.<checkname>` permission:
+
+```text
+grim.nosetback.simulation
+grim.nosetback.reach
+```
+
+This is useful when monitoring a suspicious player without disrupting their gameplay, or when a check is slightly over-aggressive for legitimate high-latency players.
+
+---
+
+## Tuning thresholds in the config
+
+If a check consistently produces borderline flags for legitimate players, you can raise its sensitivity in `en.yml`. Each check has its own config block:
+
+```yaml
+# Raise the movement simulation threshold slightly
+Simulation:
+  threshold: 0.001       # Increase if getting many near-zero offsets
+  setbackvl: 1           # Increase to require more accumulated violations before setback
+  max-advantage: 1       # Maximum accumulated advantage before setback begins
+
+NoSlow:
+  threshold: 0.001
+  setbackvl: 5
+
+Reach:
+  threshold: 0.0005      # 0.0005 = detect 3.0005+ reach; increase to reduce sensitivity
+```
+
+After editing `en.yml`, reload Grim with `/grimac reload`. Changes take effect immediately for online players.
+
+<Tip>
+  Start by increasing `setbackvl` rather than `threshold`. A higher `setbackvl` means more violations must accumulate before a setback occurs, reducing disruption from borderline flags while still catching sustained cheating.
+</Tip>
+
+---
+
+## Disabling experimental checks
+
+Experimental checks are disabled by default. If you or a previous admin enabled them, set `experimental-checks: false` in `en.yml` and reload:
+
+```yaml
+# en.yml
+experimental-checks: false
+```
+
+Experimental checks are not yet fully validated for accuracy and are more likely to produce false positives.
+
+---
+
+## High-latency players
+
+Grim enforces a maximum ping for players who are in a non-flying state. If a player's latency exceeds the threshold, they may receive unexpected setbacks. The relevant config option is:
+
+```yaml
+# en.yml
+# Maximum ping (ms) for players who are out of flying state.
+# Set to -1 to disable the limit entirely.
+max-ping-out-of-flying: 1000
+```
+
+Increase this value or set it to `-1` if your server has a high-latency player base and you are seeing frequent setbacks that correlate with lag spikes.
+
+For firework-boosted elytra flight, a separate limit applies:
+
+```yaml
+max-ping-firework-boost: 1000
+```
+
+---
+
+## ViaVersion false positives
+
+If you use ViaVersion and see false positives, check the following:
+
+- ViaVersion must be installed on the **backend server** only, not on your proxy. See the [Compatibility](/troubleshooting/compatibility) page for details.
+- The `fix-1_21-placement-rotation` option in ViaVersion's config must be **disabled** on servers running versions older than 1.21. Grim will log an error on startup if it detects this misconfiguration.
+- ViaBackwards on a 1.21.2+ server is currently unsupported and will cause issues with older clients using vehicles.

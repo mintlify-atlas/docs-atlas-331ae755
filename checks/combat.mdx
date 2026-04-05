@@ -1,0 +1,111 @@
+---
+title: "Combat checks"
+description: "Reach detection, hitbox validation, multi-interaction prevention, and aim checks used to detect combat-related cheats."
+---
+
+Combat checks cover the space between a player's eyes and the entity they are hitting. Grim tracks all entity positions server-side and validates every attack against both the player's known position and all plausible look vectors before deciding whether the hit was legitimate.
+
+<Info>
+Combat checks are most accurate with 1.7 or 1.8 clients on 1.8 servers because those protocol versions have no 0.03 movement threshold ambiguity. On 1.9+ clients, Grim accounts for the 0.03 threshold by expanding hitboxes slightly.
+</Info>
+
+## Reach and hitbox
+
+<AccordionGroup>
+  <Accordion title="Reach">
+    **Check name:** `Reach`
+    **Config:** `setbackvl: 10`
+
+    Detects players who attack entities from a distance greater than the server allows. Grim uses a two-phase approach:
+
+    1. **Real-time (prediction phase):** When an attack packet arrives, Grim immediately checks whether the hit is obviously impossible using the player's current position. If `block-impossible-hits` is enabled and the hit is clearly out of range, the packet is cancelled immediately. This prevents 3.05+ reach from registering even with packet-order limitations.
+
+    2. **Post-rotation check:** After the player's rotation is known for the tick (via the next flying/transaction packet), Grim re-evaluates the attack using all plausible look vectors. This catches 3.0–3.03 reach that slips through the real-time check.
+
+    Grim considers multiple eye heights and multiple look vectors (current yaw/pitch, previous yaw/pitch) to avoid false positives caused by 1-tick look-direction uncertainty.
+
+    Entity types that are exempt: Boats, Chest Boats, Shulkers (due to hitbox complexity). Players in creative or spectator mode are also exempt.
+
+    **Config options (`en.yml` → `Reach`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `threshold` | `0.0005` | Hitbox expansion in blocks; `0.0005` detects 3.0005+ reach |
+    | `block-impossible-hits` | `true` | Cancel packets that are known-impossible in real time |
+    | `enable-post-packet` | `false` | Send an extra packet per tick to improve detection accuracy (increases bandwidth) |
+
+    <Warning>
+    There is an inherent 0.03 expansion for 1.9–1.18.1 clients due to protocol limitations. The check is most powerful on 1.7/1.8 clients connecting to 1.8 servers. On modern cross-version setups, 3.0–3.03 hits may be flagged but not always cancelled in real time.
+    </Warning>
+
+    **Punishment group:** `Reach`
+  </Accordion>
+
+  <Accordion title="Hitboxes">
+    **Check name:** `Hitboxes`
+    **Config:** `setbackvl: 10`
+
+    Detects attacks where the player's look vector does not intersect the target entity's hitbox at all — a "missed hitbox" hit. This check is fed results from the `Reach` check's post-rotation evaluation. When the intercept calculation finds no intersection point between the player's ray and the entity bounding box, the attack is flagged as a hitbox violation rather than a reach violation.
+
+    This catches reach cheats that deliberately target an entity's ID without actually looking at it, as well as clients that send attacks against entities they cannot see.
+
+    **Punishment group:** `Hitboxes`
+  </Accordion>
+</AccordionGroup>
+
+## Interaction checks
+
+<AccordionGroup>
+  <Accordion title="MultiInteractA">
+    **Check name:** `MultiInteractA`
+    **Description:** Interacted with multiple entities in the same tick
+    **Experimental:** yes
+
+    Detects clients that send attack or interact packets for more than one entity within a single game tick. Vanilla clients can only target one entity per tick because each mouse click is processed once per tick.
+
+    **Punishment group:** `Combat`
+  </Accordion>
+
+  <Accordion title="MultiInteractB">
+    **Check name:** `MultiInteractB`
+    **Experimental:** yes
+
+    A second variant of multi-entity interaction detection that covers interact (right-click) actions in addition to attacks.
+
+    **Punishment group:** `Combat`
+  </Accordion>
+
+  <Accordion title="SelfInteract">
+    **Check name:** `SelfInteract`
+    **Description:** Interacted with self
+
+    Detects players who send an interact packet targeting their own entity ID. This is not possible with a vanilla client and is typically the result of a modified client attempting to trigger self-damage or self-interaction exploits.
+
+    **Punishment group:** `Combat`
+  </Accordion>
+</AccordionGroup>
+
+## Aim checks
+
+<AccordionGroup>
+  <Accordion title="AimDuplicateLook">
+    **Check name:** `AimDuplicateLook`
+
+    Detects clients that send a rotation packet with identical yaw and pitch to the previous rotation packet, without a teleport or vehicle switch in between. Vanilla clients only send rotation packets when the player's look direction actually changes; sending duplicate rotations is a pattern associated with aimbots that pause rotation updates to gain a timing advantage.
+
+    The check is exempt for the tick immediately following a teleport or 1.17 duplicate packet.
+
+    **Punishment group:** `Combat`
+  </Accordion>
+
+  <Accordion title="AimModulo360">
+    **Check name:** `AimModulo360`
+    **Config:** `decay: 0.005`
+
+    Detects clients that apply a `% 360` (modulo) operation to their yaw before sending it. Vanilla Minecraft's yaw is unbounded — it increases or decreases continuously and is never normalised by the client. A client that normalises yaw will produce a sudden large delta yaw (≈ 360°) when crossing the ±360 boundary, which is statistically impossible with vanilla movement.
+
+    The check compares the current delta yaw against the previous delta yaw: if the current delta is greater than 320° while the previous was under 30°, the normalisation pattern is confirmed.
+
+    **Punishment group:** `Combat`
+  </Accordion>
+</AccordionGroup>

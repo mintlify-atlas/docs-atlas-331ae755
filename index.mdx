@@ -1,97 +1,59 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Grim Anticheat"
+description: "A fully asynchronous, multithreaded, predictive Minecraft anticheat supporting versions 1.8–1.21 across Bukkit, Paper, Folia, and Fabric."
 ---
 
-## Setting up
+Grim is an open-source Minecraft anticheat built around a **1:1 movement simulation engine** — it predicts every possible player movement server-side and flags anything that deviates. Fully async and multithreaded, it scales to hundreds of concurrent players without impacting server performance.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Get Grim running on your server in minutes. Download, install, and start protecting players.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Configuration" icon="sliders" href="/configuration/overview">
+    Tune thresholds, enable checks, configure punishments, and set up Discord alerts.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Check Reference" icon="shield-check" href="/checks/overview">
+    Explore every detection — movement, combat, packets, and more — with configuration details.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Developer API" icon="code" href="/api/overview">
+    Integrate Grim into your own plugins with the GrimAPI and event bus.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Grim?
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Prediction engine" icon="brain">
+    Grim simulates every possible client movement server-side. Cheats cannot bypass a system that already knows what you *should* do.
+  </Card>
+  <Card title="Async & multithreaded" icon="bolt">
+    All checks and the vast majority of listeners run on the netty thread — no main-thread impact, scales to hundreds of players.
+  </Card>
+  <Card title="Lag compensation" icon="clock">
+    World changes are queued until they reach the player, so breaking blocks or teleporting never produces false positives.
+  </Card>
+  <Card title="1.8–1.21 support" icon="cubes">
+    Every Minecraft version, every platform — Bukkit, Paper, Folia, and Fabric — with full cross-version physics accuracy.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started
 
-## Need inspiration?
+<Steps>
+  <Step title="Download Grim">
+    Grab the latest build from [Modrinth](https://modrinth.com/plugin/grimac) (recommended) or use the nightly GitHub artifacts for Bukkit or Fabric.
+  </Step>
+  <Step title="Install the plugin">
+    Drop the `.jar` into your server's `plugins/` (Bukkit/Paper/Folia) or `mods/` (Fabric) folder and restart.
+  </Step>
+  <Step title="Review configuration">
+    Open `plugins/GrimAC/config/en.yml` and `punishments/en.yml` to tune thresholds and punishment actions for your server type.
+  </Step>
+  <Step title="Enable alerts">
+    Run `/grimac alerts` in-game to subscribe to real-time cheat alerts. Optionally configure Discord webhook integration for off-server notifications.
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Note>
+  Grim requires **Java 17 or higher** at runtime. Java 21 is required to compile from source.
+</Note>

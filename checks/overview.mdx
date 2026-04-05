@@ -1,0 +1,94 @@
+---
+title: "Checks overview"
+description: "How Grim's prediction engine works, what check categories exist, and how violations are tracked and acted on."
+---
+
+Grim's anticheat is built around a physics simulation engine that runs a full server-side copy of Minecraft's movement code for every connected player. Most checks compare the simulated result against what the client actually sent, rather than applying hand-crafted heuristics. This makes Grim significantly harder to bypass because exploiting movement requires producing output that is physically impossible under Minecraft's own equations.
+
+## How the prediction system works
+
+On every movement tick, Grim runs the following pipeline:
+
+1. **Input collection** — Grim reads the player's position, rotation, sprinting state, vehicle data, and all pending server-side events (knockback, explosions, block changes) that arrived before the tick.
+2. **Simulation** — Grim computes every possible legal next position given those inputs. The simulation accounts for all applicable physics: gravity, friction, block collisions, water/lava, elytra, vehicles, potions, and more.
+3. **Offset measurement** — The delta between the client's claimed position and the closest simulated position is the *offset*. An offset of `0.0` means the movement was perfectly predicted.
+4. **Flagging** — If the offset exceeds a configurable `threshold` (default `0.001` blocks), a violation is added and advantage begins accumulating. If the accumulated advantage passes `max-advantage` (default `1` block), or if a single tick exceeds `immediate-setback-threshold` (default `0.1` blocks), the player is setback to their last known-safe position.
+
+Checks that are not part of the prediction engine (combat, packet validation, timer, etc.) operate independently and fire as packets arrive.
+
+## Violation and decay system
+
+Every check maintains a `violations` counter. The counter increases by `1` on each flag. After a clean tick, the counter decreases by the check's `decay` value (default `0.05` per tick).
+
+```yaml
+# Example from en.yml
+NoSlow:
+  threshold: 0.001
+  setbackvl: 5    # Setback when violations exceed this value
+  decay: 0.05
+```
+
+Key fields in every check:
+
+| Field | Purpose |
+|---|---|
+| `decay` | How much to subtract from violations after a clean tick |
+| `setbackvl` | Violation level that triggers a position setback; `-1` disables |
+| `threshold` | Minimum offset or deviation before a violation is recorded (prediction checks) |
+
+Permissions can exempt a player from a specific check:
+
+| Permission | Effect |
+|---|---|
+| `grim.exempt.<configName>` | Fully exempt from that check |
+| `grim.nosetback.<configName>` | Violations still accumulate but no setback is applied |
+| `grim.nomodifypacket.<configName>` | Check cannot cancel or modify packets |
+
+## Experimental checks
+
+Checks annotated with `experimental = true` in their `@CheckData` are disabled unless you enable them in `en.yml`:
+
+```yaml
+experimental-checks: true
+```
+
+Experimental checks are those where corner-case false positives are still possible, or where the detection is a work in progress. When enabled they obey the same violation and decay rules as stable checks.
+
+<Warning>
+Enabling experimental checks on a production server without testing may produce false positives. Always verify on a staging environment first.
+</Warning>
+
+## Punishment groups
+
+Checks are grouped together in `punishments/en.yml`. A group fires its commands whenever the combined violation count across its member checks reaches a threshold. This lets you alert, log, or kick on a per-category basis without configuring every check individually.
+
+```yaml
+Reach:
+  remove-violations-after: 300
+  checks:
+    - "Reach"
+  commands:
+    - "1:1 [alert]"
+    - "1:1 [log]"
+    - "1:1 [webhook]"
+    - "1:1 [proxy]"
+```
+
+The command format is `<threshold>:<interval> <command>`. An interval of `0` means execute exactly once; any other value repeats every `N` violations after the threshold.
+
+## Check categories
+
+<CardGroup cols={2}>
+  <Card title="Movement checks" icon="person-walking" href="/checks/movement">
+    Simulation (prediction engine), Phase (clipping), NoSlow, Knockback/Explosion (velocity prediction), Timer checks, GroundSpoof, NoFall, and flight-related checks.
+  </Card>
+  <Card title="Combat checks" icon="sword" href="/checks/combat">
+    Reach (3.0 reach detection), Hitboxes (missed hitbox detection), MultiInteract, SelfInteract, and Aim checks.
+  </Card>
+  <Card title="Packet checks" icon="network-wired" href="/checks/packet">
+    BadPackets (A–Z), PacketOrder (A–P), and Crash checks that detect malformed, illegal, or incorrectly sequenced packets.
+  </Card>
+  <Card title="Miscellaneous checks" icon="shield-halved" href="/checks/misc">
+    Sprint, MultiActions, Scaffolding/Place, Block Breaking, Baritone detection, Chat, Exploit, Elytra, and Vehicle checks.
+  </Card>
+</CardGroup>

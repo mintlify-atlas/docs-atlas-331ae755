@@ -1,0 +1,74 @@
+---
+title: "Supported environments"
+description: "Server platforms, Minecraft versions, proxy configurations, and Geyser compatibility for Grim Anticheat."
+---
+
+## Server platforms
+
+Grim supports the following server environments:
+
+| Platform | Type | Notes |
+|----------|------|-------|
+| **Spigot** | Bukkit-based | Fully supported |
+| **Paper** | Bukkit-based | Fully supported; recommended for most servers |
+| **Folia** | Bukkit-based | Fully supported; regionalized threading |
+| **Fabric** | Mod loader | Fully supported via the Fabric mod build |
+
+<Info>
+  Any changes to Grim's codebase must maintain compatibility with all four of these platforms. Checks or features too specific to a single platform are not accepted in pull requests.
+</Info>
+
+## Minecraft versions
+
+Grim supports Minecraft **1.8 through 1.21**, including clients and servers running different versions simultaneously (via ViaVersion). The movement simulation engine correctly handles all major technical differences between versions, including:
+
+- Block hitbox changes (e.g. glass pane shapes differ between 1.7–1.8 and 1.9+ clients)
+- Waterlogged blocks, which do not exist for 1.12 and below clients
+- Block data that cannot be translated to older versions, which is replaced correctly
+- Bounding box differences and collision order changes between versions
+
+## Proxy support
+
+Grim works behind proxy servers such as **Velocity** and **BungeeCord**. However, the placement of ViaVersion is critical when using a proxy.
+
+### ViaVersion placement requirement
+
+<Warning>
+  ViaVersion must be installed on the **backend server** where Grim is running — not on the proxy. Grim does not support having ViaVersion installed on the proxy, even if it is also installed on the backend.
+</Warning>
+
+Grim relies on ViaVersion being on the same server to correctly translate block data, hitboxes, and physics for clients connecting on older or newer versions. When ViaVersion is on the proxy instead, Grim cannot access the correct version information it needs for accurate movement simulation.
+
+**Correct setup:**
+
+```
+[Proxy: Velocity or BungeeCord]
+        │
+        └─► [Backend server: Grim + ViaVersion]
+```
+
+**Incorrect setup:**
+
+```
+[Proxy: Velocity or BungeeCord + ViaVersion]   ← do not put ViaVersion here
+        │
+        └─► [Backend server: Grim]
+```
+
+### Geyser and Floodgate
+
+If you use Geyser (to allow Bedrock Edition players to connect), **Floodgate must be installed on the backend server** where Grim is running. Grim uses the Floodgate API to detect Bedrock players and exempt them from all checks.
+
+<Note>
+  Bedrock Edition players are fully exempt from Grim's anticheat. This is intentional — Bedrock client behavior differs from Java Edition in ways that would cause false positives if checks were applied.
+</Note>
+
+Ensure Floodgate is on the backend (not only on the proxy) so that Grim can access the API at runtime.
+
+## Compatibility constraints
+
+The following constraints apply across all environments:
+
+- **Java 17 or higher** is required to run Grim. Java 21 is required to compile from source.
+- Grim must be compatible with Minecraft **1.8 and higher**. Checks may be exempted from specific versions where necessary, but the plugin itself must load and run on all supported versions.
+- Heuristic-based checks are not included in the open-source build and are not accepted as contributions. Rate-limiting checks (such as CPS-based attack blocking) are acceptable.

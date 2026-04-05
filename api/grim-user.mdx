@@ -1,0 +1,159 @@
+---
+title: "GrimUser"
+description: "The GrimUser interface represents a player tracked by Grim and exposes per-player data such as ping, client brand, and sensitivity."
+---
+
+`GrimUser` is the primary per-player handle in the Grim API. Every online player that Grim is tracking has a corresponding `GrimUser` instance. Grim creates it on join and removes it on quit, so the reference is valid only while the player is online.
+
+## Obtaining a GrimUser
+
+Retrieve a `GrimUser` from the `GrimAbstractAPI`. Both methods return `null` if Grim is not currently tracking that player (e.g. the player has not yet fully joined, or Grim is disabled for them).
+
+```java
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+
+// From a Bukkit Player object (deprecated — prefer UUID variant)
+@Nullable GrimUser user = api.getGrimUser(player);
+
+// From a UUID
+@Nullable GrimUser user = api.getGrimUser(player.getUniqueId());
+```
+
+<Warning>
+Always null-check the return value. `getGrimUser` returns `null` when the player is not yet registered with Grim, which can happen during the early phases of the join event.
+</Warning>
+
+## Interface methods
+
+### Identity
+
+<ResponseField name="getName()" type="String">
+  The player's username as reported by the server.
+</ResponseField>
+
+<ResponseField name="getUniqueId()" type="UUID">
+  The player's UUID. Available via the `GrimIdentity` parent interface.
+</ResponseField>
+
+<ResponseField name="getVersionName()" type="String">
+  A human-readable string identifying the client's Minecraft protocol version, e.g. `"1.20.4"`.
+</ResponseField>
+
+<ResponseField name="getBrand()" type="String">
+  The client brand reported by the client's channel payload packet, e.g. `"vanilla"`, `"fabric"`, or a mod loader name.
+</ResponseField>
+
+### Network
+
+<ResponseField name="getTransactionPing()" type="int">
+  The round-trip latency in milliseconds measured using Grim's transaction (ping-pong) system. This is the latency value Grim uses internally for lag compensation and is more accurate for anticheat purposes than the Bukkit ping.
+</ResponseField>
+
+<ResponseField name="getKeepAlivePing()" type="int">
+  The round-trip latency measured using keep-alive packets. Less accurate than transaction ping for anticheat use but closer to the value shown in the tab list.
+</ResponseField>
+
+<ResponseField name="getLastTransactionReceived()" type="int">
+  The ID of the most recent transaction (pong) packet received from the client.
+</ResponseField>
+
+<ResponseField name="getLastTransactionSent()" type="int">
+  The ID of the most recent transaction (ping) packet sent to the client.
+</ResponseField>
+
+### Client settings
+
+<ResponseField name="getHorizontalSensitivity()" type="double">
+  The player's horizontal mouse sensitivity as a value between `0.0` and `1.0`, where `0.5` corresponds to 100% (the default slider position). Multiply by 200 and round to get the integer percentage shown in the client settings.
+</ResponseField>
+
+<ResponseField name="getVerticalSensitivity()" type="double">
+  The player's vertical mouse sensitivity, on the same scale as `getHorizontalSensitivity()`.
+</ResponseField>
+
+<ResponseField name="isVanillaMath()" type="boolean">
+  Returns `true` if the player is using vanilla floating-point trigonometry. Returns `false` if the client uses OptiFine's fast-math or a similar optimisation that alters sin/cos precision. Note that `%fast_math%` in placeholder strings is `!isVanillaMath()`.
+</ResponseField>
+
+### Checks and state
+
+<ResponseField name="getChecks()" type="Collection<? extends AbstractCheck>">
+  All check instances currently active for this player. You can iterate over them to inspect violation levels or the check configuration.
+</ResponseField>
+
+<ResponseField name="hasPermission(String permission)" type="boolean">
+  Tests whether the player holds a given permission node. Delegates to the platform player's permission system.
+</ResponseField>
+
+<ResponseField name="updatePermissions()" type="void">
+  Forces Grim to re-evaluate permission nodes for all checks attached to this player. Call this after granting or revoking a `grim.exempt.*` permission at runtime.
+</ResponseField>
+
+### Threading utilities
+
+<ResponseField name="runSafely(Runnable runnable)" type="void">
+  Schedules a task to run on this player's Netty I/O thread. Grim processes packets asynchronously, so some parts of `GrimUser` must only be accessed from the player's Netty thread. Wrap such access in `runSafely`.
+</ResponseField>
+
+<ResponseField name="addRealTimeTask(int transaction, Runnable runnable)" type="void">
+  Schedules a task to run once the player's received transaction ID is greater than or equal to `transaction`. Must be called from the player's Netty thread (`runSafely`).
+</ResponseField>
+
+<ResponseField name="addRealTimeTaskNow(Runnable runnable)" type="void">
+  Convenience method — schedules the task to run at `getLastTransactionSent()`.
+</ResponseField>
+
+<ResponseField name="addRealTimeTaskNext(Runnable runnable)" type="void">
+  Convenience method — schedules the task to run at `getLastTransactionSent() + 1`, i.e. after the next client acknowledgement.
+</ResponseField>
+
+### World
+
+<ResponseField name="getWorldName()" type="@Nullable String">
+  The name of the world the player is currently in, or `null` if not yet determined.
+</ResponseField>
+
+<ResponseField name="getWorldUID()" type="@Nullable UUID">
+  The UUID of the world, or `null` if not yet determined.
+</ResponseField>
+
+### Messaging
+
+<ResponseField name="sendMessage(String message)" type="void">
+  Sends a MiniMessage-formatted string to the player.
+</ResponseField>
+
+## Code example
+
+```java
+import ac.grim.grimac.GrimAPI;
+import ac.grim.grimac.api.GrimAbstractAPI;
+import ac.grim.grimac.api.GrimUser;
+import org.bukkit.entity.Player;
+
+public void inspectPlayer(Player player) {
+    GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+    GrimUser user = api.getGrimUser(player.getUniqueId());
+
+    if (user == null) {
+        // Player is not yet tracked by Grim
+        return;
+    }
+
+    int ping    = user.getTransactionPing();
+    String brand = user.getBrand();
+    String ver   = user.getVersionName();
+    int hSens    = (int) Math.round(user.getHorizontalSensitivity() * 200);
+    int vSens    = (int) Math.round(user.getVerticalSensitivity() * 200);
+    boolean fast = !user.isVanillaMath();
+
+    player.sendMessage("Ping: " + ping + "ms | Brand: " + brand
+        + " | Version: " + ver);
+    player.sendMessage("Sensitivity H/V: " + hSens + "% / " + vSens + "%"
+        + " | FastMath: " + fast);
+}
+```
+
+## Per-player features
+
+`GrimUser` also exposes `getFeatureManager()`, which returns a `FeatureManager` for attaching persistent, reload-safe data to the player. This is the recommended way to store custom per-player state in a Grim extension.

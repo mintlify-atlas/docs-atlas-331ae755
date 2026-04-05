@@ -1,0 +1,180 @@
+---
+title: "Config manager"
+description: "Provide Grim with a custom configuration backend by implementing ConfigManager and calling reload()."
+---
+
+By default Grim reads its configuration from `config.yml` on disk via `ConfigManagerFileImpl`. The `ConfigManager` interface lets you replace this with any data source — a database, a remote API, a proprietary format, or an in-memory map — without touching Grim's internals.
+
+## The ConfigManager interface
+
+```java
+package ac.grim.grimac.api.config;
+
+public interface ConfigManager extends BasicReloadable {
+
+    // Read typed values with a fallback
+    String         getStringElse(String key, String otherwise);
+    @Nullable String getString(String key);
+
+    @Nullable List<String> getStringList(String key);
+    List<String>           getStringListElse(String key, List<String> otherwise);
+
+    int    getIntElse(String key, int otherwise);
+    long   getLongElse(String key, long otherwise);
+    double getDoubleElse(String key, double otherwise);
+    boolean getBooleanElse(String key, boolean otherwise);
+
+    // Generic typed access
+    @Nullable <T> T         get(String key);
+    @Nullable <T> T         getElse(String key, T otherwise);
+    @Nullable <K,V> Map<K,V> getMap(String key);
+    @Nullable <K,V> Map<K,V> getMapElse(String key, Map<K,V> otherwise);
+    @Nullable <T> List<T>   getList(String key);
+    @Nullable <T> List<T>   getListElse(String key, List<T> otherwise);
+
+    // Called by Grim before loading; implement to signal whether loading finished
+    boolean hasLoaded();
+
+    // From BasicReloadable — called by Grim to trigger a reload of your backend
+    void reload();
+
+    // Governs whether reload() is dispatched asynchronously
+    default boolean isLoadedAsync() { return false; }
+}
+```
+
+<ParamField path="isLoadedAsync()" type="boolean" default="false">
+  When `true`, Grim dispatches `reload()` on an async scheduler thread. Override this to `true` if your config source involves blocking I/O (database query, HTTP request, etc.) so you do not stall the main thread.
+</ParamField>
+
+<ParamField path="hasLoaded()" type="boolean">
+  Grim calls this after `reload()` to confirm the configuration is ready. Return `false` to signal that loading failed; Grim will log a warning and keep the previous config active.
+</ParamField>
+
+## Providing a custom config
+
+Call `reload(ConfigManager)` on the `GrimAbstractAPI` to swap Grim's active config:
+
+```java
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+
+// Synchronous reload (isLoadedAsync() returns false)
+api.reload(myConfigManager);
+
+// Asynchronous reload — returns a future that completes with true on success
+CompletableFuture<Boolean> future = api.reloadAsync(myConfigManager);
+future.thenAccept(success -> {
+    if (!success) getLogger().severe("Grim config reload failed!");
+});
+```
+
+After `reload()` completes successfully, Grim:
+1. Calls `config.reload()` on your implementation.
+2. Calls `BaseConfigManager.load(config)` to apply global settings (prefix, console alerts, etc.).
+3. Re-applies the config to all online players' checks via each player's `reload(ConfigManager)`.
+4. Fires a `GrimReloadEvent(true)` asynchronously on the event bus.
+
+If an exception occurs at any point, `GrimReloadEvent(false)` is fired instead.
+
+## Minimal implementation example
+
+```java
+import ac.grim.grimac.api.config.ConfigManager;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+
+public class DatabaseConfigManager implements ConfigManager {
+
+    private final Map<String, Object> cache = new HashMap<>();
+    private boolean loaded = false;
+
+    @Override
+    public void reload() {
+        cache.clear();
+        // Fetch all rows from your database into cache
+        try {
+            fetchFromDatabase(cache);
+            loaded = true;
+        } catch (Exception e) {
+            loaded = false;
+            throw new RuntimeException("Failed to load config from database", e);
+        }
+    }
+
+    @Override
+    public boolean hasLoaded() {
+        return loaded;
+    }
+
+    @Override
+    public boolean isLoadedAsync() {
+        return true; // database access should not block the main thread
+    }
+
+    @Override
+    public String getStringElse(String key, String otherwise) {
+        Object val = cache.get(key);
+        return val instanceof String s ? s : otherwise;
+    }
+
+    @Override
+    public double getDoubleElse(String key, double otherwise) {
+        Object val = cache.get(key);
+        if (val instanceof Number n) return n.doubleValue();
+        return otherwise;
+    }
+
+    @Override
+    public boolean getBooleanElse(String key, boolean otherwise) {
+        Object val = cache.get(key);
+        return val instanceof Boolean b ? b : otherwise;
+    }
+
+    // ... implement the remaining methods similarly ...
+
+    @Override public @Nullable String getString(String key) { return (String) cache.get(key); }
+    @Override public int getIntElse(String key, int otherwise) { Object v = cache.get(key); return v instanceof Number n ? n.intValue() : otherwise; }
+    @Override public long getLongElse(String key, long otherwise) { Object v = cache.get(key); return v instanceof Number n ? n.longValue() : otherwise; }
+    @Override public @Nullable List<String> getStringList(String key) { return null; }
+    @Override public List<String> getStringListElse(String key, List<String> otherwise) { return otherwise; }
+    @Override public @Nullable <T> T get(String key) { return (T) cache.get(key); }
+    @Override public @Nullable <T> T getElse(String key, T otherwise) { T v = get(key); return v != null ? v : otherwise; }
+    @Override public @Nullable <K, V> Map<K, V> getMap(String key) { return null; }
+    @Override public @Nullable <K, V> Map<K, V> getMapElse(String key, Map<K, V> otherwise) { return otherwise; }
+    @Override public @Nullable <T> List<T> getList(String key) { return null; }
+    @Override public @Nullable <T> List<T> getListElse(String key, List<T> otherwise) { return otherwise; }
+
+    private void fetchFromDatabase(Map<String, Object> out) {
+        // Your DB logic here
+    }
+}
+```
+
+Then register it:
+
+```java
+@Override
+public void onEnable() {
+    DatabaseConfigManager dbConfig = new DatabaseConfigManager();
+    GrimAPI.INSTANCE.getExternalAPI().reload(dbConfig);
+}
+```
+
+## The GrimReloadEvent
+
+Subscribe to `GrimReloadEvent` to react when any reload occurs (whether triggered by `/grim reload` or by your own `api.reload(...)` call):
+
+```java
+eventBus.subscribe(this, GrimReloadEvent.class, event -> {
+    if (event.isSuccess()) {
+        getLogger().info("Grim config reloaded successfully.");
+    } else {
+        getLogger().severe("Grim config reload failed.");
+    }
+});
+```
+
+<Note>
+Grim always fires `GrimReloadEvent` asynchronously. Do not access synchronous Bukkit API inside the handler without scheduling back to the main thread.
+</Note>

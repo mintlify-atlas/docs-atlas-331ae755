@@ -1,0 +1,180 @@
+---
+title: "Configuration overview"
+description: "Learn where Grim's config files live, how to reload them, and what each top-level option controls."
+---
+
+Grim stores all of its configuration under the `plugins/GrimAC/` directory on the server. Two files drive most of the plugin's behavior:
+
+<CardGroup cols={2}>
+  <Card title="config/en.yml" icon="sliders">
+    Main configuration — thresholds, check tuning, spectator settings, exploit flags, and more.
+  </Card>
+  <Card title="punishments/en.yml" icon="gavel">
+    Punishment groups — which checks map to which actions, and at what violation counts.
+  </Card>
+</CardGroup>
+
+## File locations
+
+| File | Purpose |
+|------|---------|
+| `plugins/GrimAC/config/en.yml` | Main plugin configuration |
+| `plugins/GrimAC/punishments/en.yml` | Punishment group definitions |
+| `plugins/GrimAC/discord/en.yml` | Discord webhook embed configuration |
+
+<Tip>
+  Each config file has a language suffix (`en`, `de`, `fr`, etc.). Grim ships translations for 13 languages. The server loads the file matching the configured locale. If you only use English, you only need to edit the `en.yml` variants.
+</Tip>
+
+## Supported languages
+
+Grim ships locale files for the following languages:
+
+| Code | Language |
+|------|----------|
+| `de` | German |
+| `en` | English |
+| `es` | Spanish |
+| `fr` | French |
+| `it` | Italian |
+| `ja` | Japanese |
+| `nl` | Dutch |
+| `pl` | Polish |
+| `pt` | Portuguese |
+| `ro` | Romanian |
+| `ru` | Russian |
+| `tr` | Turkish |
+| `zh` | Chinese |
+
+## Reloading configuration
+
+After editing any config file, apply changes without restarting the server:
+
+```bash
+/grimac reload
+```
+
+<Warning>
+  The Discord webhook settings (URL, embed color, etc.) read at startup. While `/grimac reload` reloads most settings, changes to the webhook URL may require a full server restart to take effect reliably.
+</Warning>
+
+## Top-level configuration options
+
+Below is the full annotated top section of `config/en.yml` to give you a quick reference for every root-level key.
+
+```yaml config/en.yml
+alerts:
+    # Broadcast alerts to the server console as well as in-game.
+    print-to-console: true
+    proxy:
+        # Send alerts to other servers on the proxy network.
+        send: false
+        # Show alerts received from other proxy servers on this server.
+        receive: false
+
+verbose:
+    # Print verbose debug output to the console.
+    print-to-console: false
+
+# Check the Grim GitHub/Modrinth for newer versions on startup.
+check-for-updates: true
+
+client-brand:
+    # Regex patterns for client brands that should NOT be announced to operators.
+    ignored-clients:
+        - "^vanilla$"
+        - "^fabric$"
+        - "^quilt$"
+        - "^lunarclient:v\\d+\\.\\d+\\.\\d+-\\d{4},(?:fabric|forge)$"
+        - "^Feather Fabric$"
+        - "^labymod$"
+    # Disconnect Forge 1.18.2–1.19.3 clients (known built-in reach hacks).
+    disconnect-blacklisted-forge-versions: true
+
+spectators:
+    # Hide players with grim.spectator from everyone, even outside spectator mode.
+    hide-regardless: false
+    # Limit spectator hiding to specific world names (empty = all worlds).
+    allowed-worlds:
+        - ""
+
+# Kick players who stop responding after this many seconds (default 60).
+max-transaction-time: 60
+
+# Log Netty pipeline injections from other plugins on player join (debug).
+debug-pipeline-on-join: false
+
+# Enable experimental checks not yet considered stable.
+experimental-checks: false
+```
+
+### Option reference
+
+<AccordionGroup>
+  <Accordion title="alerts">
+    Controls how Grim broadcasts cheat alerts.
+
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `alerts.print-to-console` | `true` | Mirror all in-game alerts to the server console. |
+    | `alerts.proxy.send` | `false` | Forward alerts to other servers on your BungeeCord/Velocity network via plugin messaging. |
+    | `alerts.proxy.receive` | `false` | Display alerts received from other proxy-connected servers on this server. |
+
+    <Note>
+      Proxy alerts require `bungee-plugin-message-channel` to be enabled in your Velocity configuration when using Velocity.
+    </Note>
+  </Accordion>
+
+  <Accordion title="verbose">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `verbose.print-to-console` | `false` | Print verbose flag data to console for every violation. Useful when debugging false positives. |
+  </Accordion>
+
+  <Accordion title="client-brand">
+    Grim detects the client mod brand sent during the login handshake.
+
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `ignored-clients` | (list) | Regex patterns — clients whose brand matches will not be announced to operators. |
+    | `disconnect-blacklisted-forge-versions` | `true` | Kick Forge 1.18.2–1.19.3 clients, which ship with a built-in reach exploit. Disable at your own risk. |
+  </Accordion>
+
+  <Accordion title="spectators">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `hide-regardless` | `false` | Hide any player with `grim.spectator` permission regardless of their actual game mode. |
+    | `allowed-worlds` | `[""]` | List of world names where spectator hiding is active. Leave blank to apply to all worlds. |
+  </Accordion>
+
+  <Accordion title="max-transaction-time">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `max-transaction-time` | `60` | Seconds before a player is kicked for failing to respond to Grim's transaction packets. Increase for extremely high-latency players. |
+  </Accordion>
+
+  <Accordion title="packet-spam-threshold">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `packet-spam-threshold` | `100` | Number of cancelled packets per second before a player is kicked. Required because some packet limiters don't count Grim-cancelled packets. |
+    | `debug-packet-cancel` | `false` | Print a stacktrace to console when a player is kicked by this threshold. |
+  </Accordion>
+
+  <Accordion title="max-ping-out-of-flying">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `max-ping-out-of-flying` | `1000` | Maximum allowed ping (ms) when a player transitions out of flying mode. Grim does not check flying players, so this guards against ping-abuse exploits. Set to `-1` to disable. |
+  </Accordion>
+
+  <Accordion title="debug-pipeline-on-join">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `debug-pipeline-on-join` | `false` | Log the names of all Netty pipeline handlers injected by other plugins when a player joins. Useful for diagnosing compatibility issues. |
+  </Accordion>
+
+  <Accordion title="experimental-checks">
+    | Key | Default | Description |
+    |-----|---------|-------------|
+    | `experimental-checks` | `false` | Enable checks that are not yet considered stable. These may produce more false positives than normal checks. |
+  </Accordion>
+</AccordionGroup>

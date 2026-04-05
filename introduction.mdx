@@ -1,0 +1,58 @@
+---
+title: "Introduction"
+description: "What Grim Anticheat is, how it works, and where to find additional resources."
+---
+
+GrimAC is an open-source Minecraft anticheat designed to support the latest versions of Minecraft. It detects cheats by simulating every possible player movement server-side — if what the client sends doesn't match what the server predicts, Grim flags it. This approach makes the detection engine mathematically difficult to bypass through obscurity, because the prediction engine already knows what a legitimate player *can* do.
+
+Grim currently supports Minecraft versions 1.8–1.21. Geyser players are fully exempt from all checks to prevent false positives from Bedrock Edition behavior differences.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Movement simulation engine" icon="brain">
+    A 1:1 server-side replica of client movement physics — walking, swimming, knockback, cobwebs, bubble columns, and riding entities (boats, pigs, striders). Cross-version physics are handled precisely: 1.13+ clients on 1.8 servers, 1.8 clients on 1.13+ servers, and all other combinations are all correctly simulated. Block hitboxes, bounding box differences, and ViaVersion translations are all accounted for.
+  </Card>
+  <Card title="Async and multithreaded" icon="bolt">
+    All movement checks and the overwhelming majority of event listeners run on the netty thread, not the main server thread. Grim scales to hundreds of concurrent players without impacting tick rate, and thread safety is carefully managed throughout.
+  </Card>
+  <Card title="Full world replication" icon="globe">
+    Grim maintains a per-player replica of the world by listening to chunk data packets, block placements, and block changes. Chunks are compressed to 16–64 KB per chunk using palettes. Fake blocks sent via packets do not cause false positives, and client-side block glitching does not affect detection accuracy.
+  </Card>
+  <Card title="Lag compensation" icon="clock">
+    World changes are queued and applied only when they reach the player, based on latency. Breaking blocks beneath a player, changing fly status, or altering movement speed mid-flight are all handled correctly without producing false positives.
+  </Card>
+  <Card title="1.8–1.21 version support" icon="cubes">
+    Grim handles all supported Minecraft versions across both old and new server environments. Block data that cannot be translated to older client versions is replaced correctly, and version-specific hitboxes (such as glass pane shapes differing between 1.7–1.8 and 1.9+ clients) are fully accounted for.
+  </Card>
+  <Card title="Geyser support" icon="shield-check">
+    Bedrock Edition players connected through Geyser are automatically detected and fully exempted from all anticheat checks. This prevents false positives caused by differences in Bedrock client behavior.
+  </Card>
+</CardGroup>
+
+## Project status
+
+The 2.0 open-source branch is considered **feature-complete**. Bug fixes and enhancements are still accepted via pull requests, but new features driven by the core team are targeted at the upcoming premium version.
+
+A **premium version** is planned and will offer additional subscription-based checks, including heuristic-based detections not suitable for the open-source branch.
+
+<Info>
+  If you want a bug fix or enhancement and cannot sponsor the work, pull requests are welcome. See the [contributing guide](https://github.com/GrimAnticheat/Grim/blob/2.0/CONTRIBUTING.md) for guidelines.
+</Info>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Wiki" icon="book" href="https://github.com/GrimAnticheat/Grim/wiki">
+    Full documentation and configuration examples on the GitHub Wiki.
+  </Card>
+  <Card title="FAQ" icon="circle-question" href="https://github.com/GrimAnticheat/Grim/wiki/FAQ">
+    Answers to commonly asked questions about setup, compatibility, and false positives.
+  </Card>
+  <Card title="Discord" icon="discord" href="https://discord.grim.ac">
+    Community support and project discussion.
+  </Card>
+  <Card title="Developer API" icon="code" href="https://github.com/GrimAnticheat/GrimAPI">
+    Integrate Grim into your own plugins using the GrimAPI repository.
+  </Card>
+</CardGroup>

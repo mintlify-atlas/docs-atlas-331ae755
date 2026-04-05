@@ -1,0 +1,118 @@
+---
+title: "Permissions"
+description: "All Grim permission nodes — command access, check exemptions, setback overrides, and packet modification controls."
+---
+
+Grim uses standard Bukkit/Fabric permission nodes. Assign them through your permission plugin (LuckPerms, PermissionsEx, etc.) or the server's `ops.json`.
+
+## Command permissions
+
+These permissions gate access to individual `/grimac` subcommands.
+
+| Permission | Command | Description |
+|---|---|---|
+| `grim.alerts` | `/grimac alerts` | Toggle receiving cheat alerts in chat |
+| `grim.verbose` | `/grimac verbose` | Toggle verbose flag data appended to alerts |
+| `grim.brand` | `/grimac brands` | Toggle client-brand join notifications |
+| `grim.debug` | `/grimac debug` | Toggle real-time per-player debug output |
+| `grim.consoledebug` | `/grimac consoledebug` | Force per-player debug output to the console |
+| `grim.dump` | `/grimac dump` | Generate and upload a diagnostic dump |
+| `grim.help` | `/grimac help` | View the help message |
+| `grim.history` | `/grimac history` | Look up a player's stored violation history |
+| `grim.list` | `/grimac list` | List all players tracked by Grim |
+| `grim.log` | `/grimac log` | Upload a specific flag debug log |
+| `grim.performance` | `/grimac perf` | View prediction timing statistics |
+| `grim.profile` | `/grimac profile` | View a player's Grim profile |
+| `grim.reload` | `/grimac reload` | Reload Grim configuration files |
+| `grim.sendalert` | `/grimac sendalert` | Broadcast a custom alert to all alert subscribers |
+| `grim.spectate` | `/grimac spectate` / `stopspectating` | Enter and exit Grim spectator mode |
+| `grim.spectate.stophere` | `/grimac stopspectating here` | Stop spectating without teleporting back |
+| `grim.testwebhook` | `/grimac testwebhook` | Send a test message to the Discord webhook |
+| `grim.version` | `/grimac version` | View the installed version and check for updates |
+
+## Player state permissions
+
+These permissions affect how Grim processes a specific player rather than granting command access.
+
+| Permission | Effect |
+|---|---|
+| `grim.exempt` | Fully exempts the player from all Grim checks. Grim will not track the player at all — equivalent to never registering them. Applied at join and cached; a player reconnect may be required after granting. |
+| `grim.nosetback` | Prevents Grim from teleporting the player back (setback) for **all** checks globally. The player is still flagged and alerted; only the corrective teleport is suppressed. |
+| `grim.nomodifypacket` | Prevents Grim from modifying or cancelling any packet for the player globally. |
+| `grim.spectator` | Makes Grim hide the player from others (tab list and visibility) regardless of their actual game mode, when `spectators.hide-regardless` is `true` in the config. |
+
+<Warning>
+  `grim.exempt` bypasses the entire anticheat for a player. Only grant this to staff or trusted automation accounts — never to general players.
+</Warning>
+
+## Per-check permissions
+
+Grim derives per-check permission nodes from each check's **config name** (lowercased). The config name is the key used in `config/en.yml` and `punishments/en.yml`.
+
+The three per-check permission families are:
+
+| Pattern | Effect |
+|---|---|
+| `grim.exempt.<checkname>` | Exempts the player from that specific check only. Other checks still apply. |
+| `grim.nosetback.<checkname>` | Suppresses the setback for that specific check. The player is still flagged and alerted. |
+| `grim.nomodifypacket.<checkname>` | Prevents Grim from modifying packets specifically for that check. |
+
+### How the check name is resolved
+
+The source is `Check.java`:
+
+```java
+// configName is the key used in config/en.yml (falls back to checkName if unset)
+final String id = configName.toLowerCase();
+exemptPermission       = player.platformPlayer.hasPermission("grim.exempt."          + id);
+noSetbackPermission    = player.platformPlayer.hasPermission("grim.nosetback."       + id);
+noModifyPacketPermission = player.platformPlayer.hasPermission("grim.nomodifypacket." + id);
+```
+
+To find the correct `<checkname>` for a permission, look at the check's entry in `config/en.yml`. For example, a check configured under `Simulation:` uses `grim.exempt.simulation`.
+
+### Example per-check permissions
+
+| Permission | What it does |
+|---|---|
+| `grim.exempt.simulation` | Exempt from all movement simulation checks |
+| `grim.exempt.reach` | Exempt from reach checks |
+| `grim.exempt.timer` | Exempt from the timer check |
+| `grim.nosetback.simulation` | No setback from movement simulation violations |
+| `grim.nomodifypacket.noslow` | Grim will not modify packets for the NoSlow check |
+
+<Tip>
+  Per-check permissions are evaluated on every permission refresh cycle. You do not need to restart the server after granting them, but there may be a brief delay before the new permission takes effect.
+</Tip>
+
+## Permission summary
+
+```
+grim.alerts
+grim.verbose
+grim.brand
+grim.debug
+grim.consoledebug
+grim.dump
+grim.help
+grim.history
+grim.list
+grim.log
+grim.performance
+grim.profile
+grim.reload
+grim.sendalert
+grim.spectate
+grim.spectate.stophere
+grim.testwebhook
+grim.version
+
+grim.exempt
+grim.nosetback
+grim.nomodifypacket
+grim.spectator
+
+grim.exempt.<checkname>
+grim.nosetback.<checkname>
+grim.nomodifypacket.<checkname>
+```

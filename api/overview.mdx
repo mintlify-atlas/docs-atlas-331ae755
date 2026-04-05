@@ -1,0 +1,78 @@
+---
+title: "API overview"
+description: "An overview of the GrimAnticheat plugin API — what it provides, how to access it, and what you can build with it."
+---
+
+Grim exposes a public Java API that allows other plugins and extensions to integrate deeply with the anticheat. You can listen for flag events, inspect per-player data, provide a custom config backend, manage alert state, and register custom message placeholders — all without modifying Grim's source.
+
+The API is split across two artifacts:
+
+- **GrimAPI** — the public interface library, published separately at [github.com/GrimAnticheat/GrimAPI](https://github.com/GrimAnticheat/GrimAPI). Depend on this at compile time.
+- **Grim** (the plugin itself) — provides the runtime implementation. Declare it as a `depend` or `softdepend` in your `plugin.yml`.
+
+## The singleton entry point
+
+All API access starts from the `GrimAPI` singleton:
+
+```java
+GrimAPI.INSTANCE
+```
+
+`GrimAPI` holds every internal manager. For external plugin use, Grim exposes a curated surface through `GrimExternalAPI`, which implements the `GrimAbstractAPI` interface:
+
+```java
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+```
+
+You can also retrieve the same object from Bukkit's `ServicesManager`:
+
+```java
+GrimAbstractAPI api = Bukkit.getServicesManager()
+    .load(GrimAbstractAPI.class);
+```
+
+<Note>
+`GrimAPI.INSTANCE.getExternalAPI()` and the `ServicesManager` entry both return the same `GrimExternalAPI` instance. Prefer the `ServicesManager` approach when writing soft-depend code so your plugin can still load even if Grim is absent.
+</Note>
+
+## What you can do
+
+| Feature | How |
+|---|---|
+| Listen for flag, command, and reload events | `api.getEventBus()` |
+| Inspect per-player data | `api.getGrimUser(player)` |
+| Manage alert / verbose state | `api.getAlertManager()` |
+| Provide a custom config backend | `api.reload(ConfigManager)` |
+| Register custom message placeholders | `api.registerVariable(...)` |
+| Resolve a plugin to a `GrimPlugin` | `api.getGrimPlugin(this)` |
+| Read the current Grim version | `api.getGrimVersion()` |
+| Read the current server tick | `api.getCurrentTick()` |
+
+## Sub-pages
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="box" href="/api/installation">
+    Add GrimAPI as a Maven or Gradle dependency and configure your plugin descriptor.
+  </Card>
+  <Card title="GrimUser" icon="user" href="/api/grim-user">
+    Access per-player data such as ping, client brand, and sensitivity.
+  </Card>
+  <Card title="Event bus" icon="bolt" href="/api/event-bus">
+    Subscribe to FlagEvent, CommandExecuteEvent, and GrimReloadEvent.
+  </Card>
+  <Card title="Check API" icon="shield-check" href="/api/check-api">
+    Understand the Check lifecycle and create custom checks.
+  </Card>
+  <Card title="Config manager" icon="gear" href="/api/config-manager">
+    Supply Grim with a custom configuration backend.
+  </Card>
+  <Card title="Extensions" icon="puzzle-piece" href="/api/extensions">
+    Register your plugin as a Grim extension for deeper integration.
+  </Card>
+  <Card title="Placeholders" icon="brackets-curly" href="/api/placeholders">
+    Built-in and custom message placeholders.
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/api/contributing">
+    PR guidelines, code style, and build instructions.
+  </Card>
+</CardGroup>

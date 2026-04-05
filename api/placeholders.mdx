@@ -1,0 +1,116 @@
+---
+title: "Placeholders"
+description: "Built-in message placeholders and how to register your own variable or static placeholders with the Grim API."
+---
+
+Grim resolves placeholder strings before sending alert messages, punishment commands, and other configurable strings. Placeholders fall into two categories:
+
+- **Variable placeholders** — resolved per-player using a `Function<GrimUser, String>`.
+- **Static placeholders** — resolved to a fixed string that never changes at runtime (e.g. `%prefix%`).
+
+## Built-in placeholders
+
+### Player-variable placeholders
+
+These are registered automatically by `GrimExternalAPI.updateVariables()` and are re-applied on every reload.
+
+| Placeholder | Source | Notes |
+|---|---|---|
+| `%player%` | `GrimUser::getName` | Player username. |
+| `%uuid%` | `user.getUniqueId().toString()` | Player UUID. |
+| `%ping%` | `user.getTransactionPing()` | Transaction-based latency in ms. |
+| `%brand%` | `GrimUser::getBrand` | Client brand string (e.g. `"vanilla"`, `"fabric"`). |
+| `%h_sensitivity%` | `(int) Math.round(user.getHorizontalSensitivity() * 200)` | Horizontal sensitivity as a percentage (0–200). |
+| `%v_sensitivity%` | `(int) Math.round(user.getVerticalSensitivity() * 200)` | Vertical sensitivity as a percentage (0–200). |
+| `%fast_math%` | `!user.isVanillaMath()` | `true` if the client uses OptiFine fast-math or similar. |
+| `%tps%` | `GrimAPI.INSTANCE.getPlatformServer().getTPS()` | Current server TPS, formatted to 2 decimal places. |
+| `%version%` | `GrimUser::getVersionName` | Client Minecraft version string (e.g. `"1.20.4"`). |
+
+### Check-specific placeholders
+
+The following placeholders are injected by Grim's punishment/alert system and are available in alert message templates:
+
+| Placeholder | Value |
+|---|---|
+| `%check_name%` | Display name of the check (may differ from `configName` if overridden in config). |
+| `%vl%` | Current violation level at the time of the alert. |
+| `%verbose%` | Check-specific diagnostic string passed to `flag(verbose)` / `flagAndAlert(verbose)`. |
+| `%description%` | Check description (from `@CheckData.description()` or config override). |
+| `%experimental%` | `"true"` if the check is marked experimental. |
+
+### Static placeholders
+
+| Placeholder | Value |
+|---|---|
+| `%prefix%` | Configured alert prefix, default `"&bGrim &8»"`, with color codes resolved. |
+| `%grim_version%` | The running Grim plugin version string. |
+
+## Registering custom variable placeholders
+
+Use `registerVariable(String, Function<GrimUser, String>)` to add or override a player-contextual placeholder:
+
+```java
+GrimAbstractAPI api = GrimAPI.INSTANCE.getExternalAPI();
+
+// Add %my_rank% that shows the player's rank from your permissions plugin
+api.registerVariable("%my_rank%", user -> {
+    Player player = Bukkit.getPlayer(user.getUniqueId());
+    if (player == null) return "unknown";
+    return myPermissionsPlugin.getRank(player);
+});
+```
+
+Pass `null` as the function to **remove** a variable placeholder:
+
+```java
+api.registerVariable("%my_rank%", null);
+```
+
+## Registering custom static placeholders
+
+Use `registerVariable(String, String)` for values that do not vary per-player:
+
+```java
+// Register a static placeholder for your server network name
+api.registerVariable("%network%", "MyNetwork");
+```
+
+Pass `null` as the value to remove a static placeholder:
+
+```java
+api.registerVariable("%network%", null);
+```
+
+## Using placeholders in your own messages
+
+Grim's `MessageUtil.replacePlaceholders(PlatformPlayer, String)` resolves both sets of placeholders in a string. If you want to apply Grim's placeholder system to your own messages (e.g. a custom alert format), you can call the same resolution chain that Grim uses internally — though this is an internal utility class and may change without notice.
+
+For stable integration, access the maps directly from `GrimExternalAPI`:
+
+```java
+GrimExternalAPI external = (GrimExternalAPI) GrimAPI.INSTANCE.getExternalAPI();
+
+Map<String, Function<GrimUser, String>> varReplacements   = external.getVariableReplacements();
+Map<String, String>                     staticReplacements = external.getStaticReplacements();
+```
+
+You can then resolve placeholders in your own strings:
+
+```java
+String template = "%prefix% %player% flagged %check_name% (VL: %vl%)";
+
+// Apply static replacements first
+for (Map.Entry<String, String> e : staticReplacements.entrySet()) {
+    template = template.replace(e.getKey(), e.getValue());
+}
+
+// Apply variable replacements for the specific player
+GrimUser user = ...; // the flagged player
+for (Map.Entry<String, Function<GrimUser, String>> e : varReplacements.entrySet()) {
+    template = template.replace(e.getKey(), e.getValue().apply(user));
+}
+```
+
+<Note>
+Custom placeholders registered via `registerVariable` use `putIfAbsent` semantics for the built-in defaults, meaning the built-ins are protected from being accidentally overwritten by a re-registration on reload. If you want to override a built-in, call `registerVariable` with the exact same key.
+</Note>

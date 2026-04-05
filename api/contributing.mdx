@@ -1,0 +1,103 @@
+---
+title: "Contributing"
+description: "Guidelines for contributing to GrimAnticheat — pull request rules, code style, and how to build from source."
+---
+
+GrimAC is open source and welcomes contributions. This page summarises the guidelines from [CONTRIBUTING.md](https://github.com/GrimAnticheat/Grim/blob/2.0/CONTRIBUTING.md) in the main repository.
+
+## Getting the source
+
+```bash
+git clone https://github.com/GrimAnticheat/Grim.git
+cd Grim
+./gradlew build
+```
+
+Output jars are placed in `<platform>/build/libs/`:
+
+- `bukkit/build/libs/` — Bukkit/Paper/Folia jar
+- `fabric/mc*/build/libs/` — Fabric jars (one per supported MC version)
+
+<Note>
+Java 21 or higher is required **to compile** Grim. Java 17 or higher is sufficient **to run** it. Pull requests that raise the minimum runtime requirement above Java 17 will not be accepted.
+</Note>
+
+## Compatibility requirements
+
+Every change must remain compatible with:
+
+- **Platforms:** Spigot, Paper, Folia, Fabric (see [Supported environments](https://github.com/GrimAnticheat/Grim/wiki/Supported-environments))
+- **Minecraft versions:** 1.8 and higher. Checks may be exempt on specific versions where the mechanic does not exist, but the plugin must load and run on all supported versions.
+- **Java runtime:** Java 17 or higher.
+
+## Pull request guidelines
+
+<Steps>
+
+<Step title="Fork and branch">
+  Fork the repository on GitHub and create a dedicated branch for your feature or fix. Do not work directly on `2.0` or `master`.
+
+  ```bash
+  git checkout -b feat/my-improvement
+  ```
+</Step>
+
+<Step title="Write your changes">
+  Follow the code style guidelines below. Add comments to any complex or non-obvious logic. Avoid unnecessary duplication.
+</Step>
+
+<Step title="Test thoroughly">
+  Test your changes against multiple Minecraft versions (particularly the oldest and newest supported). If your change touches movement prediction, test edge cases such as high-latency scenarios, elytra, boat riding, and waterlogging.
+</Step>
+
+<Step title="Open a pull request">
+  Push your branch and open a pull request against the `2.0` branch. Reference any related issues in the description.
+
+  Write clear, descriptive commit messages. Example:
+
+  ```
+  Fix NoSlow false positive when using shields on 1.20.4+
+  
+  Shield blocking state was not being tracked correctly after the
+  1.20.4 inventory packet reorder, causing NoSlow to flag players
+  legitimately blocking with a shield.
+  ```
+</Step>
+
+</Steps>
+
+## What is accepted
+
+- Bug fixes for existing checks and platform compatibility issues.
+- Performance improvements that are safe and well-tested.
+- Support for new Minecraft versions or platforms.
+- Improvements to prediction accuracy.
+- New checks that are **deterministic** — mathematically impossible to bypass rather than heuristic.
+- Basic rate-limiting such as blocking attacks based on CPS.
+
+## What is not accepted
+
+<Warning>
+The following types of changes will be rejected regardless of implementation quality:
+</Warning>
+
+| Type | Reason |
+|---|---|
+| Heuristic-based checks | A premium version of Grim is planned for heuristic checks. The open-source branch is reserved for deterministic, bypass-proof detections. |
+| Easily-bypassable checks | A check that can be bypassed by simply changing a client setting provides no security value. |
+| Checks that only affect a single MC version | Grim aims to support all versions uniformly. |
+| Large or unnecessary dependencies | Keeping the dependency footprint small is important for server compatibility. |
+
+## Code style
+
+- Add comments for complex logic and significant algorithmic decisions.
+- Keep code clean and avoid duplication — prefer extracting utility methods.
+- Follow the existing package and class naming conventions.
+- Grim uses [Lombok](https://projectlombok.org/) extensively (`@Getter`, `@Setter`, `@NotNull`, etc.) — use it where appropriate.
+- Build scripts use Gradle Kotlin DSL (`.gradle.kts`).
+
+## Questions and support
+
+- Join the [Discord server](https://discord.grim.ac) for community discussion and questions.
+- Consult the [Wiki](https://github.com/GrimAnticheat/Grim/wiki) for existing documentation.
+- Check open issues and pull requests before starting work on a known problem.

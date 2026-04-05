@@ -1,0 +1,184 @@
+---
+title: "Event bus"
+description: "Subscribe to Grim's internal events — flags, punishment commands, and config reloads — using the EventBus."
+---
+
+Grim dispatches its internal events through a custom `EventBus` rather than the Bukkit event system. All Grim events are posted **asynchronously** on Grim's internal scheduler thread. You must not perform synchronous Bukkit API calls (e.g. `player.teleport(...)`) directly inside a Grim event handler without scheduling back to the main thread.
+
+## Accessing the EventBus
+
+```java
+EventBus eventBus = GrimAPI.INSTANCE.getExternalAPI().getEventBus();
+// or
+EventBus eventBus = GrimAPI.INSTANCE.getEventBus();
+```
+
+## Subscription styles
+
+The `EventBus` supports two ways to register listeners.
+
+### Explicit (lambda) subscription — recommended
+
+```java
+<T extends GrimEvent> void subscribe(
+    Object pluginContext,
+    Class<T> eventType,
+    GrimEventListener<T> listener
+)
+
+// Overload with priority and ignoreCancelled:
+<T extends GrimEvent> void subscribe(
+    Object pluginContext,
+    Class<T> eventType,
+    GrimEventListener<T> listener,
+    int priority,
+    boolean ignoreCancelled
+)
+```
+
+`pluginContext` is your `JavaPlugin` instance (or any class from your plugin). Grim uses it to automatically unregister your listeners when your plugin is disabled.
+
+### Annotation-based subscription
+
+```java
+void registerAnnotatedListeners(Object pluginContext, Object listener)
+void registerStaticAnnotatedListeners(Object pluginContext, Class<?> clazz)
+```
+
+Methods annotated with `@GrimEventHandler` on the listener object (or static class) will be registered. This style has more memory overhead than the explicit approach.
+
+```java
+public class MyListener {
+    @GrimEventHandler(priority = 1, ignoreCancelled = true)
+    public void onFlag(FlagEvent event) {
+        // handle flag
+    }
+}
+
+eventBus.registerAnnotatedListeners(myPlugin, new MyListener());
+```
+
+## Available events
+
+### FlagEvent
+
+Fired every time a check increments a player's violation level. This event is **cancellable** — calling `event.setCancelled(true)` prevents the violation from being counted and stops any associated setback.
+
+```java
+package ac.grim.grimac.api.event.events;
+
+public class FlagEvent extends GrimVerboseCheckEvent {
+    // Inherits from GrimCheckEvent:
+    GrimUser getUser()          // the flagged player
+    AbstractCheck getCheck()    // the check that flagged
+    double getViolations()      // VL at time of flag (before increment)
+    boolean isSetback()         // whether VL exceeds setbackVL
+    boolean isCancelled()
+    void setCancelled(boolean)
+
+    // Inherits from GrimVerboseCheckEvent:
+    String getVerbose()         // check-specific diagnostic string
+}
+```
+
+**Example — log all flags and suppress flags from admins:**
+
+```java
+eventBus.subscribe(this, FlagEvent.class, event -> {
+    GrimUser user = event.getUser();
+    AbstractCheck check = event.getCheck();
+
+    // Suppress flag for ops (they are usually exempt anyway via grim.exempt.*)
+    if (user.hasPermission("myplugin.bypass")) {
+        event.setCancelled(true);
+        return;
+    }
+
+    getLogger().info(user.getName()
+        + " flagged " + check.getCheckName()
+        + " (VL: " + event.getViolations() + ")"
+        + " | " + event.getVerbose());
+});
+```
+
+### CommandExecuteEvent
+
+Fired when Grim's punishment system is about to execute a punishment command against a player. Also cancellable and also extends `GrimVerboseCheckEvent`.
+
+```java
+package ac.grim.grimac.api.event.events;
+
+public class CommandExecuteEvent extends GrimVerboseCheckEvent {
+    GrimUser getUser()
+    AbstractCheck getCheck()
+    String getVerbose()
+    String getCommand()   // the raw command string about to be dispatched
+    boolean isCancelled()
+    void setCancelled(boolean)
+}
+```
+
+**Example — forward punishment commands to a proxy:**
+
+```java
+eventBus.subscribe(this, CommandExecuteEvent.class, event -> {
+    String cmd = event.getCommand();
+    if (cmd.startsWith("ban ")) {
+        event.setCancelled(true); // prevent local execution
+        proxyBridge.ban(event.getUser().getUniqueId());
+    }
+});
+```
+
+### GrimReloadEvent
+
+Fired after Grim finishes reloading its configuration. Not cancellable. The `isSuccess()` flag indicates whether the reload completed without errors.
+
+```java
+package ac.grim.grimac.api.event.events;
+
+public class GrimReloadEvent extends GrimEvent {
+    boolean isSuccess()
+}
+```
+
+**Example — re-read your own config when Grim reloads:**
+
+```java
+eventBus.subscribe(this, GrimReloadEvent.class, event -> {
+    if (event.isSuccess()) {
+        reloadMyConfig();
+    }
+});
+```
+
+### Other events
+
+| Event | Description |
+|---|---|
+| `GrimJoinEvent` | Player has been registered with Grim. |
+| `GrimQuitEvent` | Player's Grim session is ending. |
+| `CompletePredictionEvent` | Grim has completed movement prediction for a tick. |
+
+## Unregistering listeners
+
+Grim automatically unregisters all listeners for a plugin context when that plugin is disabled. You can also unregister manually:
+
+```java
+// Unregister a specific explicit listener
+eventBus.unregisterListener(this, myListener);
+
+// Unregister all annotation-based listeners from an object
+eventBus.unregisterListeners(this, myListenerObject);
+
+// Unregister everything for your plugin
+eventBus.unregisterAllListeners(this);
+```
+
+## Priority and cancellation
+
+Higher `priority` values execute **earlier**. The default priority is `0`. Pass `ignoreCancelled = true` to skip invocation if a previous listener has already cancelled the event.
+
+<Note>
+All Grim events are dispatched on an async thread. If you need to interact with the Bukkit API (e.g. teleport a player), use `Bukkit.getScheduler().runTask(...)` to schedule the action back to the main thread.
+</Note>

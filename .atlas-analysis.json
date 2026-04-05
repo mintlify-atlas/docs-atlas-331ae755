@@ -1,24 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Grim Anticheat",
+  "projectType": "framework",
+  "projectName": "Grim Anticheat",
+  "projectDescription": "A fully asynchronous, multithreaded, predictive Minecraft anticheat supporting versions 1.8–1.21 across Bukkit, Paper, Folia, and Fabric platforms.",
   "theme": "aspen",
-  "colors": {
-    "primary": "#e4dce4",
-    "light": "#1d1d1a",
-    "dark": "#e4dce4"
-  },
-  "favicon": "https://media.brand.dev/6fd99d1d-b020-4745-b690-e7308b458112.png",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/GrimAnticheat/Grim"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/GrimAnticheat/Grim"
-    }
-  },
+  "primaryColor": "#e4dce4",
+  "lightColor": "#1d1d1a",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -100,5 +87,37 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "1:1 movement simulation engine covering all Minecraft physics edge cases",
+    "Fully asynchronous and multithreaded design for high-performance servers",
+    "Per-player world replication with lag compensation",
+    "Support for Minecraft 1.8–1.21 across Bukkit, Paper, Folia, and Fabric",
+    "Predictive checks for reach, timer, speed, knockback, and more",
+    "Configurable punishment system with Discord webhook and proxy alert support",
+    "Plugin API for third-party integration and custom check development",
+    "Geyser/Floodgate compatibility with full Bedrock player exemption"
+  ],
+  "publicApiSurface": [
+    "GrimAbstractAPI",
+    "GrimUser",
+    "EventBus",
+    "FlagEvent",
+    "CommandExecuteEvent",
+    "GrimReloadEvent",
+    "AlertManager",
+    "ConfigManager",
+    "GrimPlugin",
+    "AbstractCheck",
+    "GrimAPI.INSTANCE.getExternalAPI()",
+    "/grimac alerts",
+    "/grimac verbose",
+    "/grimac debug",
+    "/grimac reload",
+    "/grimac profile",
+    "/grimac history",
+    "/grimac spectate",
+    "/grimac log",
+    "/grimac perf"
+  ]
 }

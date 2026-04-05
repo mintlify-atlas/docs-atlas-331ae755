@@ -1,0 +1,144 @@
+---
+title: "Proxy setup"
+description: "Run Grim behind BungeeCord or Velocity, share alerts across servers, and configure ViaVersion, Geyser, and Floodgate correctly."
+---
+
+Grim runs on your **backend** servers, not on the proxy itself. The proxy is responsible for routing players between servers; Grim performs all anticheat work on whichever backend server the player is currently connected to.
+
+## Plugin placement
+
+<CardGroup cols={2}>
+  <Card title="Install Grim here" icon="server">
+    **Backend servers** — every Paper, Spigot, Folia, or Fabric server that players play on.
+  </Card>
+  <Card title="Do NOT install Grim here" icon="ban">
+    **Proxy** (BungeeCord or Velocity) — Grim does not run on the proxy and should not be placed there.
+  </Card>
+</CardGroup>
+
+## ViaVersion placement
+
+<Warning>
+  ViaVersion must be installed on the **backend server only**. Do not install ViaVersion on the proxy — even if it is also present on the backend. Grim does not support having ViaVersion on the proxy side, and doing so will cause incorrect behavior and false positives.
+</Warning>
+
+Grim integrates directly with ViaVersion on the backend to read each client's actual protocol version and apply the correct hitbox mappings and movement rules. This integration breaks if ViaVersion is on the proxy instead.
+
+## Geyser and Floodgate
+
+Geyser (Bedrock compatibility layer) players are fully exempt from Grim checks. If you run Geyser behind a proxy:
+
+- **Floodgate must be installed on the backend server** (the server where Grim is installed), not only on the proxy.
+- Grim uses the Floodgate API to identify Bedrock players and exempt them automatically. Without Floodgate on the backend, Grim cannot distinguish Bedrock players and may attempt to check them.
+
+<Note>
+  If Floodgate is missing from the backend, Geyser players may be incorrectly processed by Grim. Always install Floodgate on the same server as Grim when running a Geyser proxy setup.
+</Note>
+
+## Cross-server alert sharing
+
+Grim can forward cheat alerts between servers on the same proxy network using the BungeeCord plugin messaging channel. This lets staff on any server see alerts from all servers simultaneously.
+
+### Enabling proxy alerts
+
+Edit `plugins/GrimAC/config/en.yml` on each backend server:
+
+```yaml config/en.yml
+alerts:
+    # Broadcast Grim alerts to the console as well.
+    print-to-console: true
+    proxy:
+        # Send this server's alerts to other servers on the proxy.
+        send: false
+        # Display alerts received from other proxy-connected servers.
+        receive: false
+```
+
+| Option | Description |
+|---|---|
+| `alerts.proxy.send` | Set to `true` on servers whose alerts you want to broadcast to the network |
+| `alerts.proxy.receive` | Set to `true` on servers where staff should see alerts from other servers |
+
+You can mix these settings. For example, set `send: true` on all game servers and `send: false` / `receive: true` on a lobby server to aggregate all alerts there.
+
+### Velocity configuration requirement
+
+<Warning>
+  If you use **Velocity**, you must enable the BungeeCord plugin messaging channel in Velocity's configuration before proxy alert forwarding will work.
+</Warning>
+
+In `velocity.toml`, set:
+
+```toml velocity.toml
+bungee-plugin-message-channel = true
+```
+
+BungeeCord enables this channel by default. No additional configuration is needed on BungeeCord proxies.
+
+## Proxy alert setup steps
+
+<Steps>
+  <Step title="Enable the plugin messaging channel (Velocity only)">
+    Open `velocity.toml` on your Velocity proxy and confirm or set:
+
+    ```toml velocity.toml
+    bungee-plugin-message-channel = true
+    ```
+
+    Restart Velocity after saving the change.
+  </Step>
+  <Step title="Configure alert forwarding on backend servers">
+    On each backend server, edit `plugins/GrimAC/config/en.yml`.
+
+    To make a server **broadcast** its alerts to the network:
+    ```yaml
+    alerts:
+        proxy:
+            send: true
+            receive: false
+    ```
+
+    To make a server **receive** alerts from the network (e.g. a staff lobby):
+    ```yaml
+    alerts:
+        proxy:
+            send: false
+            receive: true
+    ```
+
+    A server can have both enabled to both broadcast and receive.
+  </Step>
+  <Step title="Reload or restart each backend server">
+    Run `/grimac reload` on each backend server, or perform a full restart. Alert forwarding takes effect immediately after reload.
+  </Step>
+  <Step title="Verify">
+    Trigger a test alert from one server (you can use `/grimac sendalert test` with `grim.sendalert`) and confirm it appears on the receiving server.
+  </Step>
+</Steps>
+
+## The `[proxy]` punishment command
+
+In `punishments/en.yml`, you can use the special `[proxy]` command token to send a punishment action to all other servers on the proxy network when a player hits a violation threshold:
+
+```yaml punishments/en.yml
+# [proxy] - special command to alert to other servers connected to your proxy (BungeeCord/Velocity)
+Simulation:
+    commands:
+        - "100:100 [proxy]"
+```
+
+When the violation threshold is reached, Grim sends a plugin message via the proxy channel, causing other connected servers to receive the alert. This is separate from — and complementary to — the `alerts.proxy.send` setting.
+
+<Note>
+  `[proxy]` in punishments sends an alert through the proxy network. The `alerts.proxy.send/receive` settings control whether each server repeats those networked alerts to local subscribers (players with `grim.alerts`).
+</Note>
+
+## Summary
+
+| Component | Where to install |
+|---|---|
+| Grim | Backend servers |
+| ViaVersion | Backend servers **only** |
+| Floodgate | Backend servers (required for Geyser exemption) |
+| Geyser | Proxy or backend, per your setup |
+| BungeeCord / Velocity | Proxy only — no Grim needed here |

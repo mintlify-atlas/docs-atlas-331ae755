@@ -1,0 +1,193 @@
+---
+title: "Check API"
+description: "Understand the Check base class lifecycle, the @CheckData annotation, violation/decay mechanics, and how to write a custom check."
+---
+
+Every detection in Grim is a subclass of `Check`, which implements the `AbstractCheck` interface from GrimAPI. Checks are instantiated per-player and live for the duration of that player's session.
+
+## AbstractCheck interface
+
+The public-facing interface that Grim and third-party code interact with:
+
+```java
+package ac.grim.grimac.api;
+
+public interface AbstractCheck extends AbstractProcessor, BasicStatus {
+    String getCheckName();
+    default String getAlternativeName() { return getCheckName(); }
+    default String getDescription()     { return "No description provided"; }
+
+    double getViolations();
+    long   getLastViolationTime(); // UTC millis, 0 if no violation yet
+    double getDecay();
+    double getSetbackVL();
+    boolean isExperimental();
+}
+```
+
+## The @CheckData annotation
+
+Every check class must be annotated with `@CheckData` to declare its metadata. All fields have defaults and are optional.
+
+```java
+package ac.grim.grimac.checks;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface CheckData {
+    String name()            default "UNKNOWN";   // display name
+    String alternativeName() default "UNKNOWN";   // secondary name for alert messages
+    String configName()      default "DEFAULT";   // config section key (falls back to name)
+    String description()     default "No description provided";
+    double decay()           default 0.05;        // VL subtracted on clean tick
+    double setback()         default 25;          // VL threshold for teleport setback (-1 = never)
+    boolean experimental()   default false;       // hidden unless experimental checks are enabled
+}
+```
+
+<ParamField path="name" type="String" default="UNKNOWN">
+  The human-readable check name shown in alerts (e.g. `"Speed A"`).
+</ParamField>
+
+<ParamField path="configName" type="String" default="DEFAULT (falls back to name)">
+  The YAML config section key for this check (e.g. `"Speed"`). All variants of a check (A, B, C) can share the same `configName` so they read the same config block.
+</ParamField>
+
+<ParamField path="decay" type="double" default="0.05">
+  Amount subtracted from `violations` each time `reward()` is called (clean movement tick). Lower values mean VL decays more slowly.
+</ParamField>
+
+<ParamField path="setback" type="double" default="25">
+  VL threshold above which a setback teleport is triggered when `flagWithSetback()` or `flagAndAlertWithSetback()` is called. Set to `-1` to disable setbacks entirely for this check.
+</ParamField>
+
+<ParamField path="experimental" type="boolean" default="false">
+  When `true`, this check only runs if the player's server has experimental checks enabled in config. Use this for checks that may produce false positives.
+</ParamField>
+
+## Check lifecycle
+
+A `Check` instance is created by Grim when the player joins. Its constructor reads `@CheckData` and then calls `reload()` to load any per-check config overrides.
+
+### Key methods from Check.java
+
+```java
+// Increment VL and post a FlagEvent. Returns true if the event was not cancelled.
+public final boolean flag()
+public final boolean flag(String verbose)
+
+// flag() + send an alert to staff watching alerts
+public final boolean flagAndAlert()
+public final boolean flagAndAlert(String verbose)
+
+// flag() + trigger a setback teleport if VL exceeds setbackVL
+public final boolean flagWithSetback()
+public final boolean flagWithSetback(String verbose)
+
+// flagAndAlert() + setback
+public final boolean flagAndAlertWithSetback()
+public final boolean flagAndAlertWithSetback(String verbose)
+
+// Subtract decay from VL (call on a clean/passing tick)
+public final void reward()
+
+// Called on config reload — reads decay, setbackVL, displayName, description from config
+public final void reload(ConfigManager configuration)
+
+// Override point for subclasses to read their own config keys
+public void onReload(ConfigManager config) { }
+```
+
+### Violation and decay
+
+`violations` is a `double` field that accumulates each time `flag()` succeeds. Each call to `reward()` subtracts the `decay` value, floored at 0:
+
+```java
+violations = Math.max(0, violations - decay);
+```
+
+Setback is triggered when `violations > setbackVL`. A `setbackVL` of `25` (the default) means the player must flag 25 times before being teleported back.
+
+### Permission integration
+
+Grim checks three permissions automatically based on `configName` (lowercased):
+
+| Permission | Effect |
+|---|---|
+| `grim.exempt.<configName>` | Player is fully exempt from this check. |
+| `grim.nosetback.<configName>` | Player is not teleported back even when VL exceeds `setbackVL`. |
+| `grim.nomodifypacket.<configName>` | Check's `shouldModifyPackets()` returns `false` for this player. |
+
+Call `updatePermissions()` on the player's `GrimUser` to re-evaluate these after a permission change.
+
+## Writing a custom check
+
+<Warning>
+Custom checks should be registered through a Grim extension (see the [Extensions](/api/extensions) page). Injecting check instances directly into Grim's internal structures without the extension mechanism is not supported and may break across updates.
+</Warning>
+
+Below is a minimal example of a custom packet-based check:
+
+```java
+import ac.grim.grimac.checks.Check;
+import ac.grim.grimac.checks.CheckData;
+import ac.grim.grimac.checks.type.PacketCheck;
+import ac.grim.grimac.player.GrimPlayer;
+import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+
+@CheckData(
+    name        = "MyCheck A",
+    configName  = "MyCheck",
+    description = "Detects something suspicious",
+    decay       = 0.1,
+    setback     = 10,
+    experimental = false
+)
+public class MyCheckA extends Check implements PacketCheck {
+
+    public MyCheckA(GrimPlayer player) {
+        super(player);
+    }
+
+    @Override
+    public void onPacketReceive(PacketReceiveEvent event) {
+        if (event.getPacketType() != PacketType.Play.Client.PLAYER_FLYING) return;
+
+        // Run your detection logic ...
+        boolean suspicious = detectSuspiciousBehaviour();
+
+        if (suspicious) {
+            // Increment VL, send alert to staff
+            flagAndAlert("offset=" + someOffset);
+        } else {
+            // Decrement VL on a clean tick
+            reward();
+        }
+    }
+
+    private boolean detectSuspiciousBehaviour() {
+        // Example stub
+        return false;
+    }
+
+    @Override
+    public void onReload(ac.grim.grimac.api.config.ConfigManager config) {
+        // Read any custom config keys specific to this check
+        // e.g. double threshold = config.getDoubleElse("MyCheck.threshold", 0.001);
+    }
+}
+```
+
+## Config integration
+
+When `reload(ConfigManager)` is called, the `Check` base class automatically reads the following keys from the config (using `configName` as the prefix):
+
+| Config key | Type | Default source |
+|---|---|---|
+| `<configName>.decay` | double | `@CheckData.decay()` |
+| `<configName>.setbackvl` | double | `@CheckData.setback()` |
+| `<configName>.displayname` | String | `@CheckData.name()` |
+| `<configName>.description` | String | `@CheckData.description()` |
+
+Your `onReload(ConfigManager)` override is called after the base class finishes reading these standard keys, so you can safely read additional keys there.

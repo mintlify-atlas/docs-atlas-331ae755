@@ -1,0 +1,231 @@
+---
+title: "Movement checks"
+description: "Prediction-based movement checks including the simulation engine, phase detection, NoSlow, velocity prediction, timer, ground spoof, and flight checks."
+---
+
+Movement checks are the core of Grim's detection. Most of them are driven by the physics simulation engine, which re-runs Minecraft's movement equations server-side and compares the result against what the client sent. When the client's position deviates from every possible legitimate outcome by more than the configured threshold, a violation is recorded.
+
+<Info>
+All simulation-based checks share the same advantage accumulator. A single tick of cheating accumulates advantage; clean ticks decay it. Setbacks are issued only when accumulated advantage exceeds `max-advantage` or a single tick exceeds `immediate-setback-threshold`.
+</Info>
+
+## Prediction engine
+
+<AccordionGroup>
+  <Accordion title="Simulation">
+    **Check name:** `Simulation`
+
+    The main prediction check. After every movement tick, Grim computes the set of all physically possible next positions and measures the smallest distance between the client's claimed position and that set. Any deviation above the threshold flags the check.
+
+    The check accumulates *advantage* across ticks rather than flagging every individual deviation. This allows brief, high-lag spikes to be absorbed without issuing false setbacks, while sustained cheating (e.g., flight or speed) causes advantage to grow until a setback is warranted.
+
+    **Config options (`en.yml` → `Simulation`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `threshold` | `0.001` | Minimum per-tick offset in blocks that counts as a violation |
+    | `immediate-setback-threshold` | `0.1` | Offset large enough to trigger an immediate setback regardless of accumulated advantage |
+    | `max-advantage` | `1` | Total accumulated advantage (in blocks) before a setback is issued; `-1` to disable |
+    | `max-ceiling` | `4` | Upper bound on accumulated advantage to prevent unlimited build-up |
+    | `setback-decay-multiplier` | `0.999` | Multiplier applied to accumulated advantage each clean tick |
+    | `setback-violation-threshold` | `1` | Violation count required before setbacks are issued |
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="Phase">
+    **Check name:** `Phase`
+
+    Detects players clipping into solid blocks. After each prediction cycle, Grim checks whether the player's new bounding box intersects any block collision box that the previous bounding box did not. Intersection that was not present in the previous tick indicates the player phased through or into a block.
+
+    The check has a very low setback threshold (`setbackvl: 1`) because clipping into blocks can enable wall-climbing exploits even with small, momentary phase violations.
+
+    Some 1.8 blocks (anvils, chests, trapped chests) are exempted due to known vanilla hitbox quirks on that client version.
+
+    **Config options (`en.yml` → `Phase`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `setbackvl` | `1` | Violation level for setback |
+    | `decay` | `0.005` | Violation decay per clean tick |
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="NoSlow">
+    **Check name:** `NoSlow`
+    **Description:** Was not slowed while using an item
+
+    Detects clients that bypass the movement speed reduction applied when using consumables (food, potions), shields, or bows. Grim's prediction engine already accounts for the slow, so if the player's actual offset is above the threshold and they are confirmed to be using a slowing item, the check flags.
+
+    The check accounts for known Mojang netcode quirks: on 1.8 clients, the first tick of item usage does not apply a slow, so the check skips that tick. It also correctly handles item swaps and offhand interactions.
+
+    **Config options (`en.yml` → `NoSlow`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `threshold` | `0.001` | Minimum offset before flagging |
+    | `setbackvl` | `5` | Violations before setback |
+    | `decay` | `0.05` | Violation decay per clean tick |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+</AccordionGroup>
+
+## Velocity and knockback
+
+<AccordionGroup>
+  <Accordion title="AntiKB (Knockback)">
+    **Check name:** `AntiKB` / `AntiKnockback`
+    **Config name:** `Knockback`
+
+    Detects players who ignore or reduce server-sent knockback. When the server dispatches a velocity packet to the player, Grim sandwiches it between two transaction packets to determine the exact tick the player received it. If the player's subsequent movement does not reflect the expected velocity vector within the configurable threshold, a violation is recorded.
+
+    The check handles the common 0.03 movement threshold case where low velocity changes are invisible to the server, and correctly distinguishes between knockback the player legitimately chose not to accept (because they were on the ground) versus knockback they outright ignored mid-air.
+
+    **Config options (`en.yml` → `Knockback`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `threshold` | `0.001` | Minimum velocity offset to flag |
+    | `immediate-setback-threshold` | `0.1` | Immediate setback threshold |
+    | `max-advantage` | `1` | Accumulated advantage before setback |
+    | `max-ceiling` | `4` | Maximum advantage ceiling |
+    | `setback-decay-multiplier` | `0.999` | Advantage decay multiplier |
+
+    **Punishment group:** `Knockback`
+  </Accordion>
+
+  <Accordion title="AntiExplosion (Explosion)">
+    **Check name:** `AntiExplosion`
+    **Config name:** `Explosion`
+
+    Same principle as AntiKB but for explosion knockback. Explosion velocity is delivered via the `EXPLOSION` server packet. Grim reads the knockback vector from that packet, tracks when the player's client received it (via transaction sandwiching), and verifies that the player's movement incorporates the correct velocity delta.
+
+    **Config options (`en.yml` → `Explosion`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `threshold` | `0.001` | Minimum velocity offset to flag |
+    | `setbackvl` | `3` | Violations before setback |
+
+    **Punishment group:** `Knockback`
+  </Accordion>
+</AccordionGroup>
+
+## Timer checks
+
+<AccordionGroup>
+  <Accordion title="Timer (TimerA)">
+    **Check name:** `Timer`
+    **Config name:** `TimerA`
+
+    Detects players sending movement packets faster than real time (speed-hacking via a timer multiplier). Rather than counting raw packets per second, Grim ties the timer check to the player's own observed ping. Each transaction packet tells Grim the exact time on the client's clock. If the player's movement packets arrive faster than their ping-corrected clock allows, they are flagging.
+
+    This design makes the check immune to normal ping fluctuations, lag spikes, and even dramatic ping changes (0 ms → 2000 ms → 0 ms) without false positives.
+
+    The `drift` option allows players to "save up" time when they fall behind real time (e.g., due to temporary lag), letting them catch up later without being flagged. Setting it too high could theoretically allow brief fast-heal or fast-bow abuse on 1.8 clients.
+
+    **Config options (`en.yml` → `TimerA`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `setbackvl` | `10` | Violations before setback |
+    | `drift` | `120` | Milliseconds of "saved" time the player can accumulate |
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="TimerLimit">
+    **Check name:** `TimerLimit`
+
+    A companion to `Timer` that prevents abuse of the drift/balance system. High-latency players could theoretically exploit the drift allowance to send bursts of movement packets. `TimerLimit` begins limiting the timer balance when the player's ping exceeds `ping-abuse-limit-threshold`.
+
+    **Config options (`en.yml` → `TimerLimit`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `ping-abuse-limit-threshold` | `1000` | Ping in milliseconds at which limiting activates; `-1` to disable |
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="NegativeTimer">
+    **Check name:** `NegativeTimer`
+    **Experimental:** yes
+
+    Detects players who slow down their movement packets below normal speed. This is the inverse of `Timer` and catches hacks that reduce tick rate to gain advantages such as extended fall-damage immunity or extended item use windows.
+
+    The check waits until the prediction engine has verified the tick is stable (not a 0.03 skip tick) before firing, to avoid false positives from players standing still.
+
+    **Config options (`en.yml` → `NegativeTimer`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `drift` | `1200` | Milliseconds lost before flagging |
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="VehicleTimer">
+    **Check name:** `VehicleTimer`
+
+    Same check methodology as `Timer` but applied to vehicle movement packets (`VEHICLE_MOVE`). Detects players using a speed timer while mounted.
+
+    **Config options (`en.yml` → `VehicleTimer`):**
+
+    | Key | Default | Description |
+    |---|---|---|
+    | `setbackvl` | `10` | Violations before setback |
+
+    **Punishment group:** `Misc`
+  </Accordion>
+
+  <Accordion title="TickTimer">
+    **Check name:** `TickTimer`
+
+    Detects players on 1.21.2+ who send a movement packet without first sending the required `CLIENT_TICK_END` packet. On 1.21.2+ Minecraft uses a new tick protocol where the client must acknowledge the end of each tick before sending the next movement. Violating this order indicates modified client behaviour.
+
+    **Config options:** `setbackvl: 1` (default)
+  </Accordion>
+</AccordionGroup>
+
+## Ground spoof and NoFall
+
+<AccordionGroup>
+  <Accordion title="GroundSpoof">
+    **Check name:** `GroundSpoof`
+    **Config:** `setbackvl: 10`, `decay: 0.01`
+
+    Detects players falsely claiming to be on the ground when the server's simulation says they are not (or vice versa). The ground flag in movement packets is used by the server to calculate fall damage; sending an incorrect value lets cheats eliminate fall damage entirely.
+
+    The check runs after the prediction engine has finished so Grim has a reliable server-side ground state to compare against. Ghost-block situations and teleport packets are explicitly exempted.
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+
+  <Accordion title="NoFall">
+    **Check name:** `NoFall`
+    **Config:** `setbackvl: 10`
+
+    A second layer of ground-spoof detection that operates on `PLAYER_FLYING` and `PLAYER_ROTATION` packets (packets that contain no position update). If the player claims to be on the ground in one of these packets but is not physically near any ground surface, the check flags and corrects the on-ground flag in the outgoing packet.
+
+    This check is complementary to `GroundSpoof`; together they cover both position-containing and non-position packets.
+
+    **Punishment group:** `Simulation`
+  </Accordion>
+</AccordionGroup>
+
+## Flight checks
+
+<AccordionGroup>
+  <Accordion title="FlightA">
+    **Check name:** `FlightA`
+
+    Detects players who claim to be flying (via the `PLAYER_ABILITIES` packet) without having flight enabled server-side. When this flag fires, the incorrect packet is cancelled and the player's abilities are re-synced.
+
+    <Note>
+    The `BadPacketsI` check covers a related case where the player sends a `PLAYER_ABILITIES` packet claiming to be flying; `FlightA` runs within the ability packet pipeline to enforce flight state consistency.
+    </Note>
+  </Accordion>
+</AccordionGroup>

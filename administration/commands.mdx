@@ -1,0 +1,277 @@
+---
+title: "Commands"
+description: "Complete reference for all /grimac subcommands — usage, description, and required permission."
+---
+
+Grim registers a single root command with two aliases. Both work identically everywhere.
+
+```
+/grimac <subcommand> [args]
+/grim   <subcommand> [args]
+```
+
+<Info>
+  Subcommands that accept a `<target>` player argument require that player to be online and tracked by Grim (i.e. not exempt). If Grim is not tracking the target you will receive a "Player is exempt or offline" error.
+</Info>
+
+## Subcommand reference
+
+<AccordionGroup>
+  <Accordion title="/grimac alerts">
+    **Permission:** `grim.alerts`
+
+    Toggles cheat alerts on or off for the sender. When enabled, you receive a chat message every time Grim flags a player.
+
+    - Players toggle their own alert subscription.
+    - The console toggles console-level alert output independently.
+
+    ```
+    /grimac alerts
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac verbose">
+    **Permission:** `grim.verbose`
+
+    Toggles verbose output for the sender. Verbose messages include the raw flag data (offset, tick info, etc.) appended to each alert — useful when investigating potential false positives.
+
+    - Players toggle their own verbose subscription.
+    - The console toggles console verbose output independently.
+
+    ```
+    /grimac verbose
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac brands">
+    **Permission:** `grim.brand`
+
+    Toggles client-brand broadcast alerts for the sender. When enabled, you are notified whenever a player joins with a client brand that is not on the ignored list.
+
+    - Players toggle their own brand-alert subscription.
+    - The console toggles console brand-alert output independently.
+
+    ```
+    /grimac brands
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac debug [target]">
+    **Permission:** `grim.debug`
+
+    Toggles per-player debug output. When active, every check decision for the target player is sent to the listener in real time.
+
+    - If no `target` is provided, the sender debugs themselves.
+    - Players receive debug output in chat; the console receives it in the log.
+    - Console must always specify a target.
+
+    ```
+    /grimac debug
+    /grimac debug <player>
+    ```
+
+    **Related subcommand — `/grimac consoledebug <target>`** (`grim.consoledebug`): forces debug output for a player directly to the console regardless of who runs the command.
+  </Accordion>
+
+  <Accordion title="/grimac dump">
+    **Permission:** `grim.dump`
+
+    Generates a diagnostic dump containing server metadata — Grim version, PacketEvents version, server implementation, installed plugins, Java version, and build properties — and uploads it to the Grim paste service. The resulting URL is printed to the sender.
+
+    The link is cached for the session; running the command again returns the same URL without re-uploading.
+
+    ```
+    /grimac dump
+    ```
+
+    Share the paste URL when reporting bugs.
+  </Accordion>
+
+  <Accordion title="/grimac help">
+    **Permission:** `grim.help`
+
+    Displays the help message as configured in the `help` list in `config/en.yml`.
+
+    ```
+    /grimac help
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac history <player> [page]">
+    **Permission:** `grim.history`
+
+    Shows the stored violation history for a player from the database. Results are paginated using the `history.entries-per-page` setting.
+
+    Each entry shows:
+    - Server name
+    - Check that was flagged
+    - Violation count at time of log
+    - Verbose data
+    - How long ago the violation was recorded
+
+    ```
+    /grimac history <player>
+    /grimac history <player> <page>
+    /grimac hist <player> [page]
+    ```
+
+    <Note>
+      This command requires the violation database to be enabled (`history.enabled: true`) and successfully connected. See [Violation database](/administration/database) for setup instructions.
+    </Note>
+  </Accordion>
+
+  <Accordion title="/grimac list <type>">
+    **Permission:** `grim.list`
+
+    Lists Grim-tracked players. Currently the only accepted type argument is `players`.
+
+    Each player name is color-coded by status:
+    - **White** — online, being checked
+    - **Gray** — online, but exempt from checks
+    - **Dark gray** — offline, was exempt
+    - **Red** — offline, was being checked
+    - **Light purple** — online but not yet registered with Grim
+
+    Hover over a name to see the player's UUID, online status, and exempt state. Click to copy the name to clipboard.
+
+    ```
+    /grimac list players
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac log <flagId>">
+    **Permission:** `grim.log`
+
+    Uploads the in-memory debug log for a specific flag ID to the paste service and returns the URL. Flag IDs appear in verbose/debug output.
+
+    An alias `gl <flagId>` is also registered for quick access.
+
+    ```
+    /grimac log <flagId>
+    /gl <flagId>
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac perf">
+    **Permission:** `grim.performance`
+
+    Displays the current movement-prediction performance statistics:
+    - Average milliseconds per prediction over the last 500 predictions
+    - Average milliseconds per prediction over the last 20,000 predictions
+
+    Useful for diagnosing server-side performance impact from Grim.
+
+    ```
+    /grimac perf
+    /grimac performance
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac profile <player>">
+    **Permission:** `grim.profile`
+
+    Displays the Grim profile for an online player as configured by the `profile` list in `config/en.yml`. Typically includes client version, brand, ping, and check violation counts.
+
+    The target must be on the same server — cross-server profiles are not supported.
+
+    ```
+    /grimac profile <player>
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac reload">
+    **Permission:** `grim.reload`
+
+    Reloads all Grim configuration files asynchronously without restarting the server. Prints a confirmation message when complete, or an error message if the reload fails.
+
+    ```
+    /grimac reload
+    ```
+
+    <Warning>
+      Some settings (such as the `history.database.type`) only take effect on a full server restart. A reload is not sufficient for those options.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="/grimac sendalert <message>">
+    **Permission:** `grim.sendalert`
+
+    Broadcasts a custom alert message to all players who have alerts enabled. Supports MiniMessage formatting and Grim's standard placeholders.
+
+    ```
+    /grimac sendalert <message>
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac spectate <player>">
+    **Permission:** `grim.spectate`
+
+    Puts the sender into spectator mode and teleports them to the target player. The sender is hidden from the tab list while spectating. A clickable message is shown to return to the previous location.
+
+    The target must be on the same server and cannot be the sender themselves.
+
+    ```
+    /grimac spectate <player>
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac stopspectating [here]">
+    **Permission:** `grim.spectate`
+
+    Ends the active spectating session and teleports the sender back to their previous location. Pass the optional `here` argument (requires `grim.spectate.stophere`) to stop spectating without teleporting back.
+
+    ```
+    /grimac stopspectating
+    /grimac stopspectating here
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac testwebhook">
+    **Permission:** `grim.testwebhook`
+
+    Sends a test message to the configured Discord webhook and reports whether the delivery was successful. If no webhook is configured, an error message is shown instead.
+
+    ```
+    /grimac testwebhook
+    ```
+  </Accordion>
+
+  <Accordion title="/grimac version">
+    **Permission:** `grim.version`
+
+    Displays the currently installed Grim version and asynchronously checks for a newer release. Results are cached for 60 seconds to avoid repeated network requests.
+
+    Possible statuses:
+    - **Up to date** — you are on the latest release
+    - **Outdated** — a newer version is available (shown with a clickable download link)
+    - **Development build** — you are ahead of the latest published release
+    - **Unknown** — version could not be parsed or the update server was unreachable
+
+    ```
+    /grimac version
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Quick reference table
+
+| Subcommand | Alias | Permission | Description |
+|---|---|---|---|
+| `alerts` | — | `grim.alerts` | Toggle alert subscription |
+| `verbose` | — | `grim.verbose` | Toggle verbose output |
+| `brands` | — | `grim.brand` | Toggle client-brand alerts |
+| `debug [target]` | — | `grim.debug` | Toggle per-player debug output |
+| `consoledebug <target>` | — | `grim.consoledebug` | Force debug output to console |
+| `dump` | — | `grim.dump` | Upload a diagnostic dump |
+| `help` | — | `grim.help` | Show help message |
+| `history <player> [page]` | `hist` | `grim.history` | Show violation history |
+| `list players` | — | `grim.list` | List tracked players |
+| `log <flagId>` | `gl` | `grim.log` | Upload a flag debug log |
+| `perf` | `performance` | `grim.performance` | Show prediction timing stats |
+| `profile <player>` | — | `grim.profile` | Show a player's Grim profile |
+| `reload` | — | `grim.reload` | Reload configuration files |
+| `sendalert <message>` | — | `grim.sendalert` | Broadcast a custom alert |
+| `spectate <player>` | — | `grim.spectate` | Spectate a player |
+| `stopspectating [here]` | — | `grim.spectate` | Stop spectating |
+| `testwebhook` | — | `grim.testwebhook` | Test the Discord webhook |
+| `version` | — | `grim.version` | Show version and update info |
